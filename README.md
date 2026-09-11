@@ -111,6 +111,10 @@ https://cdn.jsdelivr.net/gh/shiraijikuu/lumedit@main/update.json
 
 ## 六、水印：整体复用 camera-watermark 编辑器
 
+> 水印能力整体复用作者的另一个项目 **camera-watermark**（批量相机水印工具）：
+> 仓库 https://github.com/shiraijikuu/camera-watermark ，主页 https://itangxs.top/camera-watermark 。
+> LumEdit 不重写水印功能，而是直接加载其编辑器页面与渲染内核，在此致谢。
+
 - **直接整体加载 camera-watermark 的原始编辑器页面**（`public/cwm/studio.html`，由其 `app/index.html`
   拷贝并在 `</body>` 前注入 `lumedit-bridge.js`），不自写简化水印功能，保证文字/样式/图片水印/
   位置/装饰/导出六页能力与 camera-watermark 完全一致。
