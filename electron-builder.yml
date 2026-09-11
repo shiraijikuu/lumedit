@@ -1,0 +1,34 @@
+appId: com.lumedit.desktop
+productName: LumEdit
+copyright: Copyright © 2026 LumEdit
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - package.json
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+  artifactName: ${productName}-${version}-setup.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: LumEdit 光影轻修
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  # 安装目录安全加固：强制独立 LumEdit 子文件夹 + 卸载防误删
+  include: build/installer.nsh
+asar: true
+# electron-updater 依赖发布时生成的 latest.yml；仓库创建后执行 `npm run dist` 即会产出，
+# 随后把 release/ 下安装包与 latest.yml 一并上传到 GitHub Release。
+publish:
+  - provider: github
+    owner: shiraijikuu
+    repo: lumedit
+    releaseType: release

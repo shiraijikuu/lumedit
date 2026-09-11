@@ -1,0 +1,530 @@
+// LumEdit 主进程：窗口、文件 IPC、中文菜单、双轨检查更新
+// （语义版本走 electron-updater；同版本 build 修订走远程 update.json，对齐 camera-watermark-windows）
+import { app, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron';
+import { autoUpdater } from 'electron-updater';
+import path from 'node:path';
+import fs from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+
+// ---------------- 用户自建 LUT 库（持久化到 userData/user-luts） ----------------
+interface UserLutRecord {
+  id: string;
+  name: string;
+  category: string;
+  file: string;
+  addedAt: number;
+}
+function userLutDir(): string {
+  return path.join(app.getPath('userData'), 'user-luts');
+}
+async function ensureUserLutDir(): Promise<string> {
+  const dir = userLutDir();
+  await fs.mkdir(dir, { recursive: true });
+  return dir;
+}
+async function readUserLutLib(): Promise<UserLutRecord[]> {
+  try {
+    const raw = await fs.readFile(path.join(userLutDir(), 'index.json'), 'utf-8');
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? (arr as UserLutRecord[]) : [];
+  } catch {
+    return [];
+  }
+}
+async function writeUserLutLib(lib: UserLutRecord[]): Promise<void> {
+  const dir = await ensureUserLutDir();
+  await fs.writeFile(path.join(dir, 'index.json'), JSON.stringify(lib, null, 2), 'utf-8');
+}
+
+// 单调递增构建号：同版本内容修订时 +1（渲染层远程比对用）
+const APP_BUILD = 1;
+// 远程更新清单（jsdelivr 镜像 GitHub，防缓存参数由调用方追加）
+const REMOTE_UPDATE_URL =
+  'https://cdn.jsdelivr.net/gh/shiraijikuu/lumedit@main/update.json';
+
+let mainWindow: BrowserWindow | null = null;
+// camera-watermark 水印工作室：编辑子窗口
+let wmWindow: BrowserWindow | null = null;
+// 每个 studio 窗口（编辑/离屏合成）按 webContents.id 绑定的初始化数据
+const studioInitByWc = new Map<number, unknown>();
+// 离屏合成进行中的请求（resolve / 窗口 / 超时）
+interface ComposeJob {
+  resolve: (r: { buffer: ArrayBuffer; width: number; height: number }) => void;
+  reject: (e: Error) => void;
+  win: BrowserWindow;
+  timer: NodeJS.Timeout;
+}
+const composeJobs = new Map<number, ComposeJob>();
+
+function studioUrl(devUrl: string | undefined, file: string): { url?: string; file?: string } {
+  if (devUrl) return { url: `${devUrl}/cwm/${file}` };
+  return { file: path.join(__dirname, '../dist/cwm', file) };
+}
+
+const CWM_PRELOAD = path.join(__dirname, 'preload.cjs');
+const CWM_WP = {
+  preload: CWM_PRELOAD,
+  contextIsolation: true,
+  nodeIntegration: false,
+  sandbox: true,
+} as const;
+
+// ---------------- 自动更新（语义版本） ----------------
+function setupAutoUpdater(): void {
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  try {
+    autoUpdater.setFeedURL({
+      provider: 'github',
+      owner: 'shiraijikuu',
+      repo: 'lumedit',
+    });
+  } catch (e) {
+    console.error('autoUpdater setFeedURL failed:', (e as Error).message);
+  }
+
+  const forward = (type: string, extra: Record<string, unknown> = {}) => {
+    mainWindow?.webContents.send('updater:event', { type, ...extra });
+  };
+
+  autoUpdater.on('checking-for-update', () => forward('checking'));
+  autoUpdater.on('update-available', (info) => forward('available', { version: info.version }));
+  autoUpdater.on('update-not-available', () => forward('not-available'));
+  autoUpdater.on('download-progress', (p) =>
+    forward('downloading', { percent: Math.round(p.percent) })
+  );
+  autoUpdater.on('update-downloaded', (info) => {
+    forward('downloaded', { version: info.version });
+    dialog
+      .showMessageBox({
+        type: 'info',
+        title: '更新已下载',
+        message: `新版本 v${info.version} 已下载完成，是否立即重启安装？`,
+        detail: '重启后将自动安装更新，当前未保存的工程请先保存。',
+        buttons: ['稍后重启', '立即重启'],
+        defaultId: 1,
+        cancelId: 0,
+      })
+      .then(({ response }) => {
+        if (response === 1) autoUpdater.quitAndInstall();
+      })
+      .catch(() => {});
+  });
+  autoUpdater.on('error', (err) =>
+    forward('error', { message: err && err.message ? err.message : String(err) })
+  );
+}
+
+// ---------------- 窗口 ----------------
+function createWindow(): void {
+  mainWindow = new BrowserWindow({
+    width: 1360,
+    height: 860,
+    minWidth: 1000,
+    minHeight: 640,
+    backgroundColor: '#141518',
+    title: 'LumEdit 光影轻修',
+    autoHideMenuBar: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+
+  // 外部链接一律系统浏览器打开
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  const devUrl = process.env.VITE_DEV_SERVER_URL;
+  if (devUrl) {
+    mainWindow.loadURL(devUrl);
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+  }
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+}
+
+function sendMenuAction(action: string): void {
+  mainWindow?.webContents.send('menu:action', action);
+}
+
+function buildMenu(): Menu {
+  const template: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: '文件',
+      submenu: [
+        { label: '打开图片…', accelerator: 'CmdOrCtrl+O', click: () => sendMenuAction('open-image') },
+        { label: '导入 .cube LUT…', click: () => sendMenuAction('open-lut') },
+        { type: 'separator' },
+        { label: '保存工程…', accelerator: 'CmdOrCtrl+S', click: () => sendMenuAction('save-project') },
+        { label: '打开工程…', accelerator: 'CmdOrCtrl+Shift+O', click: () => sendMenuAction('open-project') },
+        { type: 'separator' },
+        { label: '导出…', accelerator: 'CmdOrCtrl+E', click: () => sendMenuAction('export') },
+        { type: 'separator' },
+        { role: 'quit', label: '退出' },
+      ],
+    },
+    {
+      label: '编辑',
+      submenu: [
+        { label: '撤销', accelerator: 'CmdOrCtrl+Z', click: () => sendMenuAction('undo') },
+        { label: '重做', accelerator: 'CmdOrCtrl+Y', click: () => sendMenuAction('redo') },
+      ],
+    },
+    {
+      label: '视图',
+      submenu: [
+        { label: '适应窗口', accelerator: '0', click: () => sendMenuAction('fit-view') },
+        { label: '放大', accelerator: '+=', click: () => sendMenuAction('zoom-in') },
+        { label: '缩小', accelerator: '-', click: () => sendMenuAction('zoom-out') },
+        // 开发者工具不在菜单暴露；保留 Electron 默认快捷键（Ctrl+Shift+I）能力，便于排障
+      ],
+    },
+    {
+      label: '帮助',
+      submenu: [
+        { label: '检查更新', click: () => sendMenuAction('check-update') },
+        {
+          label: '下载页（浏览器打开）',
+          click: () => shell.openExternal('https://github.com/shiraijikuu/lumedit/releases/latest'),
+        },
+        { type: 'separator' },
+        { label: '关于 LumEdit', click: () => sendMenuAction('about') },
+      ],
+    },
+  ];
+  return Menu.buildFromTemplate(template);
+}
+
+// ---------------- IPC ----------------
+const IMAGE_FILTERS = [
+  { name: '图片', extensions: ['jpg', 'jpeg', 'png', 'webp'] },
+];
+
+function registerIpc(): void {
+  ipcMain.handle('dialog:openImages', async (_e, multi: boolean) => {
+    const r = await dialog.showOpenDialog(mainWindow!, {
+      properties: multi ? ['openFile', 'multiSelections'] : ['openFile'],
+      filters: IMAGE_FILTERS,
+    });
+    if (r.canceled) return null;
+    return Promise.all(
+      r.filePaths.map(async (p) => ({
+        path: p,
+        name: path.basename(p),
+        buffer: (await fs.readFile(p)).buffer.slice(0),
+      }))
+    );
+  });
+
+  ipcMain.handle('dialog:openCube', async () => {
+    const r = await dialog.showOpenDialog(mainWindow!, {
+      properties: ['openFile'],
+      filters: [
+        { name: '3D LUT', extensions: ['cube'] },
+        { name: '全部文件', extensions: ['*'] },
+      ],
+    });
+    if (r.canceled || !r.filePaths[0]) return null;
+    const p = r.filePaths[0];
+    return { path: p, name: path.basename(p), text: await fs.readFile(p, 'utf-8') };
+  });
+
+  // 列出用户 LUT 库
+  ipcMain.handle('lut:list', async () => readUserLutLib());
+
+  // 导入一个或多个 .cube 到用户库（复制进 userData，写入索引），返回最新列表
+  ipcMain.handle('lut:import', async () => {
+    const r = await dialog.showOpenDialog(mainWindow!, {
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: '3D LUT', extensions: ['cube'] },
+        { name: '全部文件', extensions: ['*'] },
+      ],
+    });
+    if (r.canceled || r.filePaths.length === 0) return null;
+    const dir = await ensureUserLutDir();
+    const lib = await readUserLutLib();
+    const imported: UserLutRecord[] = [];
+    for (const src of r.filePaths) {
+      const base = path.basename(src);
+      const name = base.replace(/\.cube$/i, '');
+      const stat = await fs.stat(src);
+      // 同名且同大小视为已存在，避免重复导入
+      const dup = lib.find((x) => x.name === name);
+      if (dup) {
+        imported.push(dup);
+        continue;
+      }
+      const id = randomUUID();
+      const file = `${id}.cube`;
+      await fs.copyFile(src, path.join(dir, file));
+      const rec: UserLutRecord = {
+        id,
+        name,
+        category: '未分类',
+        file,
+        addedAt: Date.now(),
+      };
+      // 记录大小仅用于去重判断（不持久化）
+      void stat;
+      lib.push(rec);
+      imported.push(rec);
+    }
+    lib.sort((a, b) => a.addedAt - b.addedAt);
+    await writeUserLutLib(lib);
+    return { lib, imported };
+  });
+
+  // 读取某个用户 LUT 的 cube 文本
+  ipcMain.handle('lut:read', async (_e, id: string) => {
+    const lib = await readUserLutLib();
+    const rec = lib.find((x) => x.id === id);
+    if (!rec) return null;
+    const text = await fs.readFile(path.join(userLutDir(), rec.file), 'utf-8');
+    return { record: rec, text };
+  });
+
+  // 重命名 / 改分类
+  ipcMain.handle(
+    'lut:update',
+    async (_e, args: { id: string; name?: string; category?: string }) => {
+      const lib = await readUserLutLib();
+      const rec = lib.find((x) => x.id === args.id);
+      if (!rec) return lib;
+      if (typeof args.name === 'string' && args.name.trim()) rec.name = args.name.trim();
+      if (typeof args.category === 'string' && args.category.trim())
+        rec.category = args.category.trim();
+      await writeUserLutLib(lib);
+      return lib;
+    }
+  );
+
+  // 从库中删除（同时删除 cube 文件）
+  ipcMain.handle('lut:delete', async (_e, id: string) => {
+    const lib = await readUserLutLib();
+    const idx = lib.findIndex((x) => x.id === id);
+    if (idx >= 0) {
+      const rec = lib[idx];
+      lib.splice(idx, 1);
+      await fs.rm(path.join(userLutDir(), rec.file), { force: true }).catch(() => {});
+      await writeUserLutLib(lib);
+    }
+    return lib;
+  });
+
+  ipcMain.handle('fs:readBuffer', async (_e, p: string) => {
+    const b = await fs.readFile(p);
+    return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
+  });
+
+  ipcMain.handle(
+    'dialog:saveBuffer',
+    async (_e, args: { defaultName: string; filters: Electron.FileFilter[]; bytes: ArrayBuffer | Uint8Array }) => {
+      const r = await dialog.showSaveDialog(mainWindow!, {
+        defaultPath: args.defaultName,
+        filters: args.filters,
+      });
+      if (r.canceled || !r.filePath) return null;
+      const buf = args.bytes instanceof Uint8Array ? args.bytes : new Uint8Array(args.bytes);
+      await fs.writeFile(r.filePath, buf);
+      return r.filePath;
+    }
+  );
+
+  ipcMain.handle('dialog:saveProject', async (_e, args: { defaultName: string; text: string }) => {
+    const r = await dialog.showSaveDialog(mainWindow!, {
+      defaultPath: args.defaultName,
+      filters: [{ name: 'LumEdit 工程', extensions: ['lightedit'] }],
+    });
+    if (r.canceled || !r.filePath) return null;
+    await fs.writeFile(r.filePath, args.text, 'utf-8');
+    return r.filePath;
+  });
+
+  ipcMain.handle('dialog:openProject', async () => {
+    const r = await dialog.showOpenDialog(mainWindow!, {
+      properties: ['openFile'],
+      filters: [{ name: 'LumEdit 工程', extensions: ['lightedit', 'json'] }],
+    });
+    if (r.canceled || !r.filePaths[0]) return null;
+    const p = r.filePaths[0];
+    return { path: p, text: await fs.readFile(p, 'utf-8') };
+  });
+
+  ipcMain.handle('dialog:pickDir', async () => {
+    const r = await dialog.showOpenDialog(mainWindow!, { properties: ['openDirectory', 'createDirectory'] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    return r.filePaths[0];
+  });
+
+  ipcMain.handle('fs:writeFile', async (_e, absPath: string, bytes: ArrayBuffer | Uint8Array) => {
+    const buf = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    await fs.mkdir(path.dirname(absPath), { recursive: true });
+    await fs.writeFile(absPath, buf);
+  });
+
+  ipcMain.handle('app:meta', () => ({ version: app.getVersion(), build: APP_BUILD }));
+
+  ipcMain.handle('shell:openExternal', (_e, url: string) => shell.openExternal(url));
+
+  // 手动触发 electron-updater
+  ipcMain.handle('updater:check', async () => {
+    try {
+      await autoUpdater.checkForUpdates();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+  });
+  ipcMain.handle('updater:install', () => autoUpdater.quitAndInstall());
+
+  // 远程 update.json（主进程发起，绕开渲染端 CSP / 跨域）
+  ipcMain.handle('update:fetchRemote', async () => {
+    // 离线 / 404（清单尚未发布）是常态：吞掉异常返回 null，由渲染层走 error 分支，避免主进程噪音
+    try {
+      const r = await fetch(`${REMOTE_UPDATE_URL}?t=${Date.now()}`, { cache: 'no-store' });
+      if (!r.ok) return null;
+      return await r.json();
+    } catch {
+      return null;
+    }
+  });
+
+  // ---------------- camera-watermark 水印工作室（整体加载原始编辑器） ----------------
+  ipcMain.handle('cwm:open', async (e, payload: unknown) => {
+    if (wmWindow && !wmWindow.isDestroyed()) {
+      studioInitByWc.set(wmWindow.webContents.id, payload);
+      wmWindow.focus();
+      return true;
+    }
+    wmWindow = new BrowserWindow({
+      width: 1320,
+      height: 860,
+      minWidth: 1040,
+      minHeight: 640,
+      parent: mainWindow ?? undefined,
+      modal: true,
+      backgroundColor: '#0b0c0f',
+      title: '水印工作室 · camera-watermark',
+      autoHideMenuBar: true,
+      webPreferences: CWM_WP,
+    });
+    studioInitByWc.set(wmWindow.webContents.id, payload);
+    const target = studioUrl(process.env.VITE_DEV_SERVER_URL, 'studio.html');
+    if (target.url) await wmWindow.loadURL(target.url);
+    else await wmWindow.loadFile(target.file!);
+    const wcId = wmWindow.webContents.id;
+    wmWindow.on('closed', () => {
+      studioInitByWc.delete(wcId);
+      wmWindow = null;
+    });
+    return true;
+  });
+
+  // studio 页面拉取自己的初始化数据（编辑窗 / 离屏合成窗各自绑定）
+  ipcMain.handle('cwm:requestInit', (e) => studioInitByWc.get(e.sender.id) ?? null);
+
+  ipcMain.handle('cwm:apply', (e, result: unknown) => {
+    mainWindow?.webContents.send('cwm:applied', result);
+    const win = BrowserWindow.fromWebContents(e.sender);
+    win?.close();
+  });
+
+  ipcMain.handle('cwm:cancel', (e) => {
+    BrowserWindow.fromWebContents(e.sender)?.close();
+  });
+
+  // 离屏全分辨率合成：隐藏窗口复用同一 camera-watermark 渲染器
+  ipcMain.handle(
+    'cwm:compose',
+    (
+      e,
+      payload: {
+        baseDataUrl: string;
+        state: unknown;
+        meta: unknown;
+        format: string;
+        quality: number;
+      }
+    ) =>
+      new Promise((resolve, reject) => {
+        const win = new BrowserWindow({
+          show: false,
+          width: 800,
+          height: 600,
+          webPreferences: CWM_WP,
+        });
+        const wcId = win.webContents.id;
+        studioInitByWc.set(wcId, { compose: true, ...payload });
+        const timer = setTimeout(() => {
+          if (composeJobs.has(wcId)) {
+            composeJobs.delete(wcId);
+            if (!win.isDestroyed()) win.destroy();
+            reject(new Error('水印全分辨率合成超时'));
+          }
+        }, 120000);
+        composeJobs.set(wcId, {
+          resolve: resolve as ComposeJob['resolve'],
+          reject,
+          win,
+          timer,
+        });
+        win.webContents.on('crashed', () => {
+          clearTimeout(timer);
+          composeJobs.delete(wcId);
+          reject(new Error('合成窗口崩溃'));
+        });
+        const target = studioUrl(process.env.VITE_DEV_SERVER_URL, 'studio.html');
+        (target.url ? win.loadURL(target.url) : win.loadFile(target.file!)).catch(reject);
+      })
+  );
+
+  ipcMain.handle('cwm:composeResult', (e, result: { buffer: ArrayBuffer; width: number; height: number }) => {
+    const job = composeJobs.get(e.sender.id);
+    if (!job) return;
+    clearTimeout(job.timer);
+    composeJobs.delete(e.sender.id);
+    job.resolve(result);
+    if (!job.win.isDestroyed()) job.win.destroy();
+  });
+}
+
+// ---------------- 生命周期 ----------------
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+
+  app.whenReady().then(() => {
+    setupAutoUpdater();
+    registerIpc();
+    Menu.setApplicationMenu(buildMenu());
+    createWindow();
+    // 启动 5 秒后后台检查语义版本更新（不抢启动资源）
+    setTimeout(() => {
+      autoUpdater.checkForUpdates().catch(() => {});
+    }, 5000);
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+  });
+}

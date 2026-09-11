@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0A84FF"/>
+      <stop offset="0.55" stop-color="#5E5CE6"/>
+      <stop offset="1" stop-color="#BF5AF2"/>
+    </linearGradient>
+    <linearGradient id="lut" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#34C8FF"/>
+      <stop offset="0.2" stop-color="#0A84FF"/>
+      <stop offset="0.42" stop-color="#5E5CE6"/>
+      <stop offset="0.62" stop-color="#FF375F"/>
+      <stop offset="0.82" stop-color="#FF9F0A"/>
+      <stop offset="1" stop-color="#FFD60A"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 圆角底 -->
+  <rect x="0" y="0" width="1024" height="1024" rx="230" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1024" height="1024" rx="230" fill="url(#sheen)"/>
+
+  <!-- LE 字标 -->
+  <text x="512" y="508" text-anchor="middle" dominant-baseline="central"
+        font-family="Segoe UI, system-ui, -apple-system, Arial, sans-serif"
+        font-size="452" font-weight="800" letter-spacing="-18" fill="#ffffff">LE</text>
+
+  <!-- LUT 色卡条：冷→暖的色彩查找隐喻 -->
+  <rect x="266" y="716" width="492" height="42" rx="21" fill="url(#lut)" opacity="0.96"/>
+</svg>

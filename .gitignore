@@ -1,0 +1,9 @@
+node_modules/
+dist/
+dist-electron/
+release/
+test/smoke/smoke.bundle.js
+*.log
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,309 @@
+:root {
+  /* iOS 暗色设计系统 */
+  --bg-canvas: #0b0c0f;
+  --bg-0: #141519;
+  --bg-1: #1a1b20;
+  --bg-2: #22232a;
+  --bg-3: #2c2d36;
+  --glass: rgba(28, 29, 35, 0.72);
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.14);
+  --txt-0: #f2f3f7;
+  --txt-1: #aab0bd;
+  --txt-2: #6f7585;
+  --accent: #0a84ff;
+  --accent-hover: #339cff;
+  --accent-soft: rgba(10, 132, 255, 0.16);
+  --danger: #ff453a;
+  --ok: #30d158;
+  --warn: #ffd60a;
+  --radius-lg: 12px;
+  --radius: 9px;
+  --radius-sm: 6px;
+  --shadow-card: 0 4px 18px rgba(0, 0, 0, 0.35);
+  --shadow-pop: 0 10px 40px rgba(0, 0, 0, 0.55);
+  --ease: cubic-bezier(0.22, 0.8, 0.32, 1);
+  --slider-h: 4px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-canvas);
+  color: var(--txt-0);
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI',
+    'Microsoft YaHei', system-ui, sans-serif;
+  font-size: 13px;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button {
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--txt-0);
+  background: var(--bg-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: all 0.14s var(--ease);
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+}
+button:hover {
+  background: #363844;
+}
+button:active {
+  transform: scale(0.97);
+  background: #3d3f4c;
+}
+button.primary {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(10, 132, 255, 0.35);
+}
+button.primary:hover {
+  background: var(--accent-hover);
+}
+button.ghost {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--txt-1);
+}
+button.ghost:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--txt-0);
+}
+button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 20px;
+  background: transparent;
+  cursor: pointer;
+  margin: -2px 0;
+}
+input[type='range']::-webkit-slider-runnable-track {
+  height: var(--slider-h);
+  border-radius: 2px;
+  background: var(--bg-3);
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5), 0 0 0 0 rgba(10, 132, 255, 0);
+  transition: box-shadow 0.15s var(--ease), transform 0.1s var(--ease);
+}
+input[type='range']:active::-webkit-slider-thumb {
+  transform: scale(1.12);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5), 0 0 0 6px var(--accent-soft);
+}
+
+select,
+input[type='text'],
+input[type='number'] {
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--txt-0);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 5px 9px;
+  outline: none;
+  transition: border-color 0.14s var(--ease);
+}
+select:focus,
+input[type='text']:focus,
+input[type='number']:focus {
+  border-color: var(--accent);
+}
+select option {
+  background: var(--bg-1);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.panel-section {
+  border-bottom: 1px solid var(--line);
+  padding: 14px 16px;
+}
+.panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--txt-2);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.slider-row {
+  display: grid;
+  grid-template-columns: 54px 1fr 48px;
+  align-items: center;
+  gap: 10px;
+  margin: 9px 0;
+}
+.slider-row label {
+  color: var(--txt-1);
+  font-size: 12.5px;
+}
+.slider-row .val {
+  text-align: right;
+  color: var(--txt-2);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* iOS 风分段控件 */
+.segmented {
+  display: flex;
+  background: var(--bg-0);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+}
+.segmented button {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 4px;
+  color: var(--txt-1);
+  font-size: 12px;
+  box-shadow: none;
+}
+.segmented button.active {
+  background: var(--bg-3);
+  color: var(--txt-0);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+.segmented button:active {
+  transform: none;
+}
+
+/* iOS 风开关 */
+.switch {
+  position: relative;
+  width: 42px;
+  height: 25px;
+  border-radius: 13px;
+  background: var(--bg-3);
+  transition: background 0.18s var(--ease);
+  cursor: pointer;
+  flex: none;
+}
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+  transition: transform 0.18s var(--ease);
+}
+.switch.on {
+  background: var(--ok);
+}
+.switch.on::after {
+  transform: translateX(17px);
+}
+
+.chip {
+  padding: 4px 10px;
+  border-radius: 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--txt-1);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: all 0.14s var(--ease);
+}
+.chip:hover {
+  color: var(--txt-0);
+  border-color: var(--line-strong);
+}
+.chip.active {
+  background: var(--accent-soft);
+  border-color: rgba(10, 132, 255, 0.5);
+  color: #7db8ff;
+}
+
+.glass {
+  background: var(--glass);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+/* 棋盘格（透明背景） */
+.checkerboard {
+  background-image:
+    linear-gradient(45deg, #18191e 25%, transparent 25%),
+    linear-gradient(-45deg, #18191e 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #18191e 75%),
+    linear-gradient(-45deg, transparent 75%, #18191e 75%);
+  background-size: 22px 22px;
+  background-position: 0 0, 0 11px, 11px -11px, -11px 0;
+  background-color: #101115;
+}
+
+/* 只做位移不做 opacity：隐藏窗口/离屏合成下动画时钟可能停在首帧，
+   若首帧 opacity:0 会导致元素永久不可见；位移卡住也不影响可读性 */
+@keyframes fadeIn {
+  from {
+    transform: translateY(6px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+.fade-in {
+  animation: fadeIn 0.22s var(--ease) both;
+}

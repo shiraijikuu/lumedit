@@ -1,0 +1,15 @@
+{
+  "version": "0.1.0",
+  "build": 1,
+  "coreVersion": "0.1.0",
+  "shellVersion": "0.1.0",
+  "releaseDate": "2026-09-12",
+  "downloads": {
+    "windows": "https://github.com/shiraijikuu/lumedit/releases/latest"
+  },
+  "download_url": "https://github.com/shiraijikuu/lumedit/releases/latest",
+  "notes": {
+    "zh": "LumEdit 首个版本：裁剪 / 基础调色 / LUT（内置 19 款 + 我的 LUT 库）/ camera-watermark 水印 / 保真导出 / 批量处理。",
+    "en": "First LumEdit release: crop, adjustments, LUT (19 built-in + user library), camera-watermark studio, fidelity export and batch."
+  }
+}

@@ -1,0 +1,202 @@
+{
+  "version": "1.0.0",
+  "categories": [
+    {
+      "id": "film",
+      "name": "胶片模拟"
+    },
+    {
+      "id": "cinematic",
+      "name": "电影感"
+    },
+    {
+      "id": "bw",
+      "name": "黑白"
+    },
+    {
+      "id": "portrait",
+      "name": "人像"
+    },
+    {
+      "id": "landscape",
+      "name": "风光"
+    },
+    {
+      "id": "creative",
+      "name": "创意"
+    }
+  ],
+  "luts": [
+    {
+      "id": "kodak-2383",
+      "name": "Kodak 2383",
+      "category": "film",
+      "author": "LumEdit 内置",
+      "file": "kodak-2383.cube",
+      "size": 17,
+      "description": "经典柯达电影胶片，暖调奶油高光"
+    },
+    {
+      "id": "fuji-3510",
+      "name": "Fuji 3510",
+      "category": "film",
+      "author": "LumEdit 内置",
+      "file": "fuji-3510.cube",
+      "size": 17,
+      "description": "富士胶片，清透微冷"
+    },
+    {
+      "id": "portra-400",
+      "name": "Portra 400",
+      "category": "portrait",
+      "author": "LumEdit 内置",
+      "file": "portra-400.cube",
+      "size": 17,
+      "description": "柯达 Portra，柔和暖肤"
+    },
+    {
+      "id": "cinestill-800t",
+      "name": "CineStill 800T",
+      "category": "film",
+      "author": "LumEdit 内置",
+      "file": "cinestill-800t.cube",
+      "size": 17,
+      "description": "夜景胶片，阴影青、高光暖"
+    },
+    {
+      "id": "classic-neg",
+      "name": "经典负片",
+      "category": "film",
+      "author": "LumEdit 内置",
+      "file": "classic-neg.cube",
+      "size": 17,
+      "description": "柔和负片质感，暗青暖亮"
+    },
+    {
+      "id": "teal-orange",
+      "name": "青橙电影",
+      "category": "cinematic",
+      "author": "LumEdit 内置",
+      "file": "teal-orange.cube",
+      "size": 17,
+      "description": "阴影青、高光橙的电影配色"
+    },
+    {
+      "id": "cinematic-warm",
+      "name": "暖调电影",
+      "category": "cinematic",
+      "author": "LumEdit 内置",
+      "file": "cinematic-warm.cube",
+      "size": 17,
+      "description": "暖色温高对比电影感"
+    },
+    {
+      "id": "cinematic-cool",
+      "name": "冷调电影",
+      "category": "cinematic",
+      "author": "LumEdit 内置",
+      "file": "cinematic-cool.cube",
+      "size": 17,
+      "description": "冷色温高对比电影感"
+    },
+    {
+      "id": "dark-mood",
+      "name": "暗调氛围",
+      "category": "cinematic",
+      "author": "LumEdit 内置",
+      "file": "dark-mood.cube",
+      "size": 17,
+      "description": "压暗高对比，冷峻氛围"
+    },
+    {
+      "id": "bw-classic",
+      "name": "经典黑白",
+      "category": "bw",
+      "author": "LumEdit 内置",
+      "file": "bw-classic.cube",
+      "size": 17,
+      "description": "中性灰阶黑白"
+    },
+    {
+      "id": "ilford-hp5",
+      "name": "Ilford HP5",
+      "category": "bw",
+      "author": "LumEdit 内置",
+      "file": "ilford-hp5.cube",
+      "size": 17,
+      "description": "高反差黑白"
+    },
+    {
+      "id": "soft-cream",
+      "name": "柔肤奶油",
+      "category": "portrait",
+      "author": "LumEdit 内置",
+      "file": "soft-cream.cube",
+      "size": 17,
+      "description": "明亮柔和，奶油肌"
+    },
+    {
+      "id": "airy",
+      "name": "通透亮调",
+      "category": "portrait",
+      "author": "LumEdit 内置",
+      "file": "airy.cube",
+      "size": 17,
+      "description": "清透提亮，冷白肤色"
+    },
+    {
+      "id": "velvia",
+      "name": "Velvia 浓郁",
+      "category": "landscape",
+      "author": "LumEdit 内置",
+      "file": "velvia.cube",
+      "size": 17,
+      "description": "高饱和高对比，风光利器"
+    },
+    {
+      "id": "autumn",
+      "name": "秋日暖阳",
+      "category": "landscape",
+      "author": "LumEdit 内置",
+      "file": "autumn.cube",
+      "size": 17,
+      "description": "橙金暖调，秋景氛围"
+    },
+    {
+      "id": "crisp-fresh",
+      "name": "清新通透",
+      "category": "landscape",
+      "author": "LumEdit 内置",
+      "file": "crisp-fresh.cube",
+      "size": 17,
+      "description": "天蓝草绿，清新明亮"
+    },
+    {
+      "id": "fade-matte",
+      "name": "哑光褪色",
+      "category": "creative",
+      "author": "LumEdit 内置",
+      "file": "fade-matte.cube",
+      "size": 17,
+      "description": "抬黑场的复古哑光"
+    },
+    {
+      "id": "cyberpunk",
+      "name": "赛博朋克",
+      "category": "creative",
+      "author": "LumEdit 内置",
+      "file": "cyberpunk.cube",
+      "size": 17,
+      "description": "蓝紫洋红，霓虹夜色"
+    },
+    {
+      "id": "japanese-film",
+      "name": "日系淡彩",
+      "category": "creative",
+      "author": "LumEdit 内置",
+      "file": "japanese-film.cube",
+      "size": 17,
+      "description": "低对比清淡日系"
+    }
+  ]
+}

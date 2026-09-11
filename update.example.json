@@ -1,0 +1,15 @@
+{
+  "version": "0.1.0",
+  "build": 1,
+  "coreVersion": "0.1.0",
+  "shellVersion": "0.1.0",
+  "releaseDate": "2026-09-11",
+  "downloads": {
+    "windows": "https://github.com/shiraijikuu/lumedit/releases/latest"
+  },
+  "download_url": "https://github.com/shiraijikuu/lumedit/releases/latest",
+  "notes": {
+    "zh": "LumEdit 首个版本：裁剪 / 基础调色 / LUT / 水印插件 / 保真导出 / 批量处理。",
+    "en": "First LumEdit release: crop, adjustments, LUT, watermark plugin, fidelity export and batch."
+  }
+}
