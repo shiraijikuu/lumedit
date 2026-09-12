@@ -273,7 +273,7 @@ export  default {
     width: 'Width',
     height: 'Height',
     rotation: 'Rotation',
-    hint: 'Applies exposure / temperature / tint inside the mask; linear ramps 0 to 1 across the mask',
+    hint: 'Drag the arrow line on the image to adjust position / direction / range; exposure, temperature and tint apply inside the mask',
   },
   slider: {
     valTitle: 'Click to type a value ({min} ~ {max}), double-click to reset',

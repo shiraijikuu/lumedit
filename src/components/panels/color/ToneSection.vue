@@ -6,12 +6,12 @@
         <button
           v-if="g.picker"
           type="button"
-          class="ghost mini picker-btn"
+          class="picker-btn"
           :class="{ active: store.pickerActive }"
           :title="t('adjust.pickerTitle')"
           @click="store.togglePicker()"
         >
-          {{ t('adjust.picker') }}
+          <span class="picker-icon">⌖</span>{{ t('adjust.picker') }}
         </button>
       </p>
       <SliderRow
@@ -102,11 +102,26 @@ function onReset(key: keyof AdjustParams): void {
 }
 .picker-btn {
   margin-left: auto;
-  font-size: 10.5px;
-  padding: 1px 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  background: transparent;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.picker-btn:hover {
+  background: var(--accent-soft);
 }
 .picker-btn.active {
-  color: var(--accent);
-  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.picker-icon {
+  font-size: 13px;
+  line-height: 1;
 }
 </style>

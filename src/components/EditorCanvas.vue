@@ -45,6 +45,30 @@
         @load="onWmPreviewLoad"
       />
 
+      <!-- 局部渐变蒙版叠加：PS 式箭头线，可拖动调整位置/方向/范围 -->
+      <svg
+        v-if="gradOverlay && !isCrop"
+        class="grad-overlay"
+        @pointerdown.stop="gradMoveStart($event)"
+      >
+        <template v-if="!gradOverlay.radial">
+          <line :x1="gradOverlay.x1" :y1="gradOverlay.y1" :x2="gradOverlay.cx" :y2="gradOverlay.cy" class="grad-line grad-line-dim" />
+          <line :x1="gradOverlay.cx" :y1="gradOverlay.cy" :x2="gradOverlay.x2" :y2="gradOverlay.y2" class="grad-line" />
+          <polygon :points="gradArrow" class="grad-arrow" />
+        </template>
+        <ellipse
+          v-else
+          :cx="gradOverlay.cx"
+          :cy="gradOverlay.cy"
+          :rx="gradOverlay.rw"
+          :ry="gradOverlay.rh"
+          :transform="`rotate(${store.params.gradation.rotation} ${gradOverlay.cx} ${gradOverlay.cy})`"
+          class="grad-ellipse"
+        />
+        <circle :cx="gradOverlay.x1" :cy="gradOverlay.y1" r="6" class="grad-handle" @pointerdown.stop="gradEndStart('start')" />
+        <circle :cx="gradOverlay.x2" :cy="gradOverlay.y2" r="6" class="grad-handle" @pointerdown.stop="gradEndStart('end')" />
+      </svg>
+
       <!-- 剪裁警告蒙版（高光红 / 阴影蓝） -->
       <canvas v-if="store.clipWarn && !isCrop" ref="clipCanvasRef" class="clip-overlay"></canvas>
 
@@ -196,6 +220,96 @@ function feedLut(): void {
   lutStage.setLut(gl, store.lutData);
   // 纹理替换本身不触发渲染，必须让管线带着新 3D 纹理重绘一次
   renderer?.setParams(store.params);
+}
+
+// ---------- 局部渐变蒙版叠加（PS 式箭头线） ----------
+const gradOverlay = computed(() => {
+  const g = store.params.gradation;
+  if (!g.enabled || isCrop.value) return null;
+  const th = (g.rotation * Math.PI) / 180;
+  const cx = (g.x + g.w / 2) * 100;
+  const cy = (g.y + g.h / 2) * 100;
+  const dx = Math.cos(th) * (g.w / 2) * 100;
+  const dy = Math.sin(th) * (g.h / 2) * 100;
+  return {
+    x1: cx - dx, y1: cy - dy,
+    x2: cx + dx, y2: cy + dy,
+    cx, cy,
+    radial: g.type === 'radial',
+    rw: (g.w / 2) * 100,
+    rh: (g.h / 2) * 100,
+    rotation: g.rotation,
+  };
+});
+
+const gradArrow = computed(() => {
+  const o = gradOverlay.value;
+  if (!o || o.radial) return '';
+  const ang = Math.atan2(o.y2 - o.y1, o.x2 - o.x1);
+  const back = ang + Math.PI;
+  const wing = 0.42;
+  const len = 4.2;
+  const p1 = `${o.x2 + Math.cos(back - wing) * len},${o.y2 + Math.sin(back - wing) * len}`;
+  const p2 = `${o.x2 + Math.cos(back + wing) * len},${o.y2 + Math.sin(back + wing) * len}`;
+  return `${o.x2},${o.y2} ${p1} ${p2}`;
+});
+
+function gradClamp(g: import('@/types/EditParams').GradationParams): void {
+  g.w = Math.min(2.5, Math.max(0.05, g.w));
+  g.h = Math.min(2.5, Math.max(0.05, g.h));
+  g.rotation = ((g.rotation + 180) % 360 + 360) % 360 - 180;
+}
+
+/** 拖动整条线：平移蒙版 */
+function gradMoveStart(e: PointerEvent): void {
+  const start = stageNorm(e);
+  const g0 = { x: store.params.gradation.x, y: store.params.gradation.y };
+  store.mutate(() => {}, true);
+  const move = (ev: PointerEvent) => {
+    const p = stageNorm(ev);
+    store.params.gradation.x = g0.x + (p.x - start.x);
+    store.params.gradation.y = g0.y + (p.y - start.y);
+  };
+  const up = () => {
+    store.endScrub();
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+}
+
+/** 拖动两端圆点：旋转 + 调整范围（径向模式下同步宽高） */
+function gradEndStart(which: 'start' | 'end'): void {
+  const g = store.params.gradation;
+  const cx = g.x + g.w / 2;
+  const cy = g.y + g.h / 2;
+  const radial = g.type === 'radial';
+  store.mutate(() => {}, true);
+  const move = (ev: PointerEvent) => {
+    const p = stageNorm(ev);
+    const dx = p.x - cx;
+    const dy = p.y - cy;
+    let ang = (Math.atan2(dy, dx) * 180) / Math.PI;
+    if (which === 'start') ang += 180;
+    const rad = (ang * Math.PI) / 180;
+    const proj = Math.abs(dx * Math.cos(rad) + dy * Math.sin(rad));
+    store.params.gradation.rotation = Math.round(((ang + 180) % 360 + 360) % 360 - 180);
+    if (radial) {
+      store.params.gradation.w = 2 * proj;
+      store.params.gradation.h = 2 * proj;
+    } else {
+      store.params.gradation.w = 2 * proj;
+    }
+    gradClamp(store.params.gradation);
+  };
+  const up = () => {
+    store.endScrub();
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
 }
 
 // ---------- 分屏对比 / 剪裁警告 ----------
@@ -609,6 +723,38 @@ watch(
   width: 100%;
   height: 100%;
   pointer-events: none;
+}
+.grad-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: move;
+}
+.grad-overlay .grad-line {
+  stroke: var(--accent, #4da3ff);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.grad-overlay .grad-line-dim {
+  opacity: 0.45;
+  stroke-dasharray: 5 4;
+}
+.grad-overlay .grad-arrow {
+  fill: var(--accent, #4da3ff);
+}
+.grad-overlay .grad-ellipse {
+  fill: none;
+  stroke: var(--accent, #4da3ff);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 6 4;
+}
+.grad-overlay .grad-handle {
+  fill: #fff;
+  stroke: var(--accent, #4da3ff);
+  stroke-width: 2;
+  cursor: pointer;
 }
 .crop-guides {
   position: absolute;
