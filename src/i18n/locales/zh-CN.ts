@@ -244,6 +244,20 @@ export  default {
   filmstrip: {
     remove: '从会话移除',
   },
+  gradation: {
+    title: '局部渐变',
+    enable: '启用',
+    type: '类型',
+    linear: '线性',
+    radial: '径向',
+    region: '蒙版位置 / 大小',
+    posX: '位置 X',
+    posY: '位置 Y',
+    width: '宽度',
+    height: '高度',
+    rotation: '旋转',
+    hint: '蒙版内应用曝光/色温/色调；线性沿蒙版横向 0→1 渐变',
+  },
   slider: {
     valTitle: '点击直接输入（{min} ~ {max}），双击滑块复位',
   },

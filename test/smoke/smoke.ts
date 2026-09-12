@@ -16,6 +16,7 @@ import { compareSemver, resolveDownloadUrl } from '../../src/core/update/updateS
 import { createFileAccessPolicy } from '../../electron/fileAccess';
 import { TexturePool } from '../../src/core/render/texturePool';
 import { bakeLutFromParams } from '../../src/core/render/lut/bakeCurrentLut';
+import { GradationStage } from '../../src/core/render/stages/GradationStage';
 import kodakCube from '../../src/assets/luts/kodak-2383.cube';
 import {
   isRawFileName,
@@ -695,6 +696,50 @@ async function testLutBake(): Promise<void> {
   ok('曝光 +1 烘焙中点变亮（≈1.0）', mid[0] > 0.9, `v=${mid[0]}`);
 }
 
+// ---------- 11. 局部渐变 Stage ----------
+async function testGradation(): Promise<void> {
+  logs.push('[gradation]');
+  const gl = createGL();
+  const stage = new GradationStage();
+
+  // 未启用：直通
+  const bmp = await solidBitmap(32, 32, [0.5, 0.5, 0.5]);
+  const input = uploadTexture(gl, bmp);
+  const p0 = params();
+  const ctx0: RenderContext = { gl, width: 32, height: 32 };
+  const passthrough = stage.execute(input, p0, ctx0);
+  ok('未启用直通（返回输入纹理）', passthrough === input);
+
+  // 启用 + 曝光 +2：中心（蒙版内部）应变亮，角落（蒙版外）保持 0.5
+  const p1 = params();
+  p1.gradation.enabled = true;
+  p1.gradation.type = 'radial';
+  p1.gradation.x = 0.25;
+  p1.gradation.y = 0.25;
+  p1.gradation.w = 0.5;
+  p1.gradation.h = 0.5;
+  p1.gradation.exposure = 2;
+  const ctx1: RenderContext = { gl, width: 32, height: 32 };
+  const out = stage.execute(input, p1, ctx1);
+  const px = readPixel(gl, out, 32, 32);
+  ok('蒙版中心曝光 +2（≈255）', px[0] >= 250, `center=${px[0]}`);
+
+  // 角落像素应基本不变（mask≈0）
+  const fbo = gl.createFramebuffer()!;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, out, 0);
+  const corner = new Uint8Array(4);
+  gl.readPixels(1, 1, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, corner);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.deleteFramebuffer(fbo);
+  ok('蒙版外角落不受影响（<160）', corner[0] < 160, `corner=${corner[0]}`);
+
+  stage.destroy();
+  if (out !== input) gl.deleteTexture(out);
+  gl.deleteTexture(input);
+  bmp.close();
+}
+
 async function main(): Promise<void> {
   const logEl = document.getElementById('log');
   const write = (t: string) => {
@@ -711,6 +756,7 @@ async function main(): Promise<void> {
     testSecurityPolicy();
     testTexturePool();
     await testLutBake();
+    await testGradation();
     await testRaw();
     testCurveLut();
     testEnsureParams();

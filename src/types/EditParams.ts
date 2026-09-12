@@ -121,6 +121,25 @@ export interface WatermarkParams {
   cwmMeta: Record<string, unknown> | null;
 }
 
+export interface GradationParams {
+  enabled: boolean;
+  /** linear=线性渐变，radial=径向 */
+  type: 'linear' | 'radial';
+  /** 归一化矩形（y 以画面顶部为原点） */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** 旋转角度（度，顺时针） */
+  rotation: number;
+  /** 渐变内曝光（EV） */
+  exposure: number;
+  /** 渐变内色温 */
+  temperature: number;
+  /** 渐变内色调 */
+  tint: number;
+}
+
 export interface EditParams {
   geometry: GeometryParams;
   adjust: AdjustParams;
@@ -132,6 +151,8 @@ export interface EditParams {
   colorGrade: ColorGradeParams;
   /** 第二档：效果 */
   effects: EffectsParams;
+  /** v0.3.0：局部渐变 */
+  gradation: GradationParams;
   lut: LutParams;
   /** P1：camera-watermark 水印（管线最后一步，导出阶段离屏合成） */
   watermark?: WatermarkParams;
@@ -193,6 +214,18 @@ export const defaultEditParams: EditParams = {
     sharpen: 0,
     denoise: 0,
   },
+  gradation: {
+    enabled: false,
+    type: 'linear',
+    x: 0.2,
+    y: 0.2,
+    w: 0.6,
+    h: 0.6,
+    rotation: 0,
+    exposure: 0,
+    temperature: 0,
+    tint: 0,
+  },
   lut: {
     id: null,
     path: null,
@@ -229,6 +262,7 @@ export function ensureParams(p: Partial<EditParams> | null | undefined): EditPar
     Object.assign(out.colorGrade.highlights, p.colorGrade.highlights);
   }
   if (p.effects) Object.assign(out.effects, p.effects);
+  if (p.gradation) Object.assign(out.gradation, p.gradation);
   if (p.lut) Object.assign(out.lut, p.lut);
   if (p.watermark) out.watermark = p.watermark;
   return out;
@@ -254,6 +288,7 @@ export function cloneParams(p: EditParams): EditParams {
       highlights: { ...p.colorGrade.highlights },
     },
     effects: { ...p.effects },
+    gradation: { ...p.gradation },
     lut: { ...p.lut },
   };
   if (p.watermark) {

@@ -258,6 +258,20 @@ export  default {
   filmstrip: {
     remove: '从会话移除',
   },
+  gradation: {
+    title: 'Local gradient',
+    enable: 'Enable',
+    type: 'Type',
+    linear: 'Linear',
+    radial: 'Radial',
+    region: 'Mask position / size',
+    posX: 'Position X',
+    posY: 'Position Y',
+    width: 'Width',
+    height: 'Height',
+    rotation: 'Rotation',
+    hint: 'Applies exposure / temperature / tint inside the mask; linear ramps 0 to 1 across the mask',
+  },
   slider: {
     valTitle: 'Click to type a value ({min} ~ {max}), double-click to reset',
   },

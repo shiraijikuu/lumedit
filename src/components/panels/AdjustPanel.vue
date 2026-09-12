@@ -65,6 +65,14 @@
       </CollapseSection>
 
       <CollapseSection :default-open="false">
+        <template #title>{{ t('gradation.title') }}</template>
+        <template #actions>
+          <button type="button" class="ghost mini" @click="resetGradation">{{ t('common.reset') }}</button>
+        </template>
+        <GradationSection />
+      </CollapseSection>
+
+      <CollapseSection :default-open="false">
         <template #title>
           {{ t('adjust.effects') }}
         </template>
@@ -93,6 +101,7 @@ import CurveSection from './color/CurveSection.vue';
 import HslSection from './color/HslSection.vue';
 import GradeSection from './color/GradeSection.vue';
 import EffectsSection from './color/EffectsSection.vue';
+import GradationSection from './color/GradationSection.vue';
 
 const store = useEditorStore();
 const presetStore = usePresetStore();
@@ -128,6 +137,25 @@ function resetGrade(): void {
     p.colorGrade = JSON.parse(JSON.stringify(defaultEditParams.colorGrade));
   });
 }
+const GRADATION_DEFAULT = {
+  enabled: false,
+  type: 'linear' as const,
+  x: 0.2,
+  y: 0.2,
+  w: 0.6,
+  h: 0.6,
+  rotation: 0,
+  exposure: 0,
+  temperature: 0,
+  tint: 0,
+};
+
+function resetGradation(): void {
+  store.mutate((p) => {
+    p.gradation = { ...GRADATION_DEFAULT };
+  });
+}
+
 function resetEffects(): void {
   store.mutate((p) => {
     p.effects = { ...defaultEditParams.effects };

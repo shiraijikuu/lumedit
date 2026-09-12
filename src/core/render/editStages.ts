@@ -5,6 +5,7 @@ import { CurveStage } from './stages/CurveStage';
 import { HslStage } from './stages/HslStage';
 import { ColorGradeStage } from './stages/ColorGradeStage';
 import { EffectsStage } from './stages/EffectsStage';
+import { GradationStage } from './stages/GradationStage';
 import { LutStage } from './stages/LutStage';
 
 /**
@@ -17,6 +18,7 @@ export interface EditStageBundle {
   curve: CurveStage;
   hsl: HslStage;
   colorGrade: ColorGradeStage;
+  gradation: GradationStage;
   effects: EffectsStage;
   lut: LutStage;
   /** 按管线固定顺序排列的 Stage（几何 → … → LUT） */
@@ -30,10 +32,11 @@ export function createEditStageBundle(): EditStageBundle {
   const curve = new CurveStage();
   const hsl = new HslStage();
   const colorGrade = new ColorGradeStage();
+  const gradation = new GradationStage();
   const effects = new EffectsStage();
   const lut = new LutStage();
 
-  const ordered: RenderStage[] = [geometry, adjust, curve, hsl, colorGrade, effects, lut];
+  const ordered: RenderStage[] = [geometry, adjust, curve, hsl, colorGrade, gradation, effects, lut];
 
   return {
     geometry,
@@ -41,6 +44,7 @@ export function createEditStageBundle(): EditStageBundle {
     curve,
     hsl,
     colorGrade,
+    gradation,
     effects,
     lut,
     ordered,
