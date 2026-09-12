@@ -17,10 +17,8 @@ win:
   target:
     - target: nsis
       arch: [x64]
-      artifactName: LumEdit-${version}-setup.${ext}
     - target: portable
       arch: [x64]
-      artifactName: LumEdit-${version}-portable.${ext}
   icon: build/icon.ico
 nsis:
   oneClick: false
@@ -30,8 +28,11 @@ nsis:
   shortcutName: LumEdit 光影轻修
   installerIcon: build/icon.ico
   uninstallerIcon: build/icon.ico
+  artifactName: LumEdit-${version}-setup.${ext}
   # 安装目录安全加固：强制独立 LumEdit 子文件夹 + 卸载防误删
   include: build/installer.nsh
+portable:
+  artifactName: LumEdit-${version}-portable.${ext}
 asar: true
 # electron-updater 依赖发布时生成的 latest.yml；仓库创建后执行 `npm run dist:full` 即会产出，
 # 随后把 release/ 下安装包与 latest.yml 一并上传到 GitHub Release。
