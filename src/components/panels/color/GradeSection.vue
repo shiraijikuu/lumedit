@@ -70,6 +70,8 @@ function hsvToCss(h: number, s: number): string {
 }
 function swatch(g: Group): string {
   const w = store.params.colorGrade[g];
+  // 饱和为 0 = 无染色：显示中性灰（CSS 默认色），避免出现突兀的黑块
+  if (w.sat <= 0) return '';
   return hsvToCss(w.hue, w.sat);
 }
 </script>
