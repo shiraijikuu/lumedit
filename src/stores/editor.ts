@@ -615,9 +615,29 @@ export const useEditorStore = defineStore('editor', () => {
     pickerActive.value = false;
   }
 
+  // ---------- 分屏对比 / 剪裁警告（视图状态，不进撤销栈与工程） ----------
+  const splitCompare = ref(false);
+  const splitX = ref(0.5);
+  const clipWarn = ref(false);
+  function toggleSplitCompare(): void {
+    if (!hasImage.value) return;
+    splitCompare.value = !splitCompare.value;
+  }
+  function setSplitX(x: number): void {
+    splitX.value = Math.min(0.98, Math.max(0.02, x));
+  }
+  function toggleClipWarn(): void {
+    clipWarn.value = !clipWarn.value;
+  }
+
   // ---------- 交互模式 / 裁剪比例 ----------
   const mode = ref<'edit' | 'crop'>('edit');
   const cropAspect = ref<number | null>(null);
+  const cropGuide = ref<'thirds' | 'grid' | 'golden' | 'off'>('thirds');
+  function cycleCropGuide(): void {
+    const order = ['thirds', 'grid', 'golden', 'off'] as const;
+    cropGuide.value = order[(order.indexOf(cropGuide.value) + 1) % order.length];
+  }
   function setMode(m: 'edit' | 'crop'): void {
     mode.value = m;
   }
@@ -866,9 +886,10 @@ export const useEditorStore = defineStore('editor', () => {
     applyPreset, copyToClipboard, copyEdits, pasteEdits,
     // geometry
     rotate90, toggleFlipH, toggleFlipV, setCrop, resetCrop, resetGeometryAll, resetAdjust, resetColorAll,
-    // picker / mode / zoom / export / project
+    // picker / split / clip / mode / zoom / export / project
     pickerActive, togglePicker, cancelPicker, applyWhiteBalance,
-    mode, cropAspect, setMode, setCropAspect, zoomBy,
+    splitCompare, splitX, clipWarn, toggleSplitCompare, setSplitX, toggleClipWarn,
+    mode, cropAspect, cropGuide, cycleCropGuide, setMode, setCropAspect, zoomBy,
     exportCurrent, saveProjectFile, openProjectFile,
     // image
     openPicker, loadImageObject, switchTo, closeImage,

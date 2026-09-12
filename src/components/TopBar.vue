@@ -50,11 +50,30 @@
       >
         {{ t('topbar.original') }}
       </button>
+      <button
+        class="icon-btn"
+        :title="t('topbar.splitTitle')"
+        :class="{ active: store.splitCompare }"
+        :disabled="!store.hasImage"
+        @click="store.toggleSplitCompare()"
+      >
+        ⇔
+      </button>
+      <button
+        class="icon-btn"
+        :title="t('topbar.clipTitle')"
+        :class="{ active: store.clipWarn }"
+        :disabled="!store.hasImage"
+        @click="store.toggleClipWarn()"
+      >
+        ⚠
+      </button>
     </div>
 
     <div class="spacer"></div>
 
     <div class="group">
+      <button class="ghost" :disabled="!store.hasImage" @click="$emit('openExif')">{{ t('topbar.exif') }}</button>
       <button class="icon-btn lang-btn" @click="toggleLocale()">{{ otherLangLabel }}</button>
       <button class="ghost" @click="$emit('checkUpdate')">{{ t('topbar.checkUpdate') }}</button>
     </div>
@@ -67,7 +86,7 @@ import { useEditorStore } from '@/stores/editor';
 import { t, getLocale, toggleLocale } from '@/i18n';
 import AppLogo from '@/components/ui/AppLogo.vue';
 const store = useEditorStore();
-defineEmits<{ (e: 'checkUpdate'): void; (e: 'openAbout'): void }>();
+defineEmits<{ (e: 'checkUpdate'): void; (e: 'openAbout'): void; (e: 'openExif'): void }>();
 const otherLangLabel = computed(() => (getLocale() === 'zh-CN' ? 'EN' : '中'));
 </script>
 

@@ -1,4 +1,4 @@
-export default {
+export  default {
   common: {
     reset: '重置',
     resetAll: '全部重置',
@@ -25,6 +25,7 @@ export default {
     label: '语言',
   },
   topbar: {
+    exif: '信息',
     copyEdits: '复制',
     pasteEdits: '粘贴',
     copyEditsTitle: '复制当前调整（Ctrl+Alt+C）',
@@ -59,6 +60,11 @@ export default {
     resetAll: '重置全部几何',
   },
   canvas: {
+    guide: '参考线',
+    thirds: '三分线',
+    grid: '网格',
+    golden: '黄金比例',
+    off: '关闭',
     pickerTip: '吸管：点击画面中的中性灰区域（Esc 取消）',
     cropTip: '在图上拖出裁剪框，手柄微调',
     cancelCrop: '取消 · Esc',
@@ -135,6 +141,8 @@ export default {
     untitled: '未命名 LUT',
   },
   exportPanel: {
+    longEdge: '长边 {v}px',
+    outPx: '输出 {w} × {h}px',
     clipboardBtn: '复制到剪贴板',
     clipboardDone: '已复制到剪贴板，可直接粘贴使用',
     format: '格式',
@@ -200,6 +208,7 @@ export default {
     pastedName: '粘贴的调整',
   },
   msg: {
+    exifFail: 'EXIF 读取失败',
     presetFail: '预设操作失败：{v}',
     lutBuiltinFail: '内置 LUT 加载失败：{v}',
     lutFileFail: 'LUT 文件无法加载：\n{v}',
@@ -231,4 +240,20 @@ export default {
   slider: {
     valTitle: '点击直接输入（{min} ~ {max}），双击滑块复位',
   },
+  exif: {
+    title: '照片信息（EXIF）',
+    empty: '没有可显示的元数据',
+    camera: '相机',
+    lens: '镜头',
+    aperture: '光圈',
+    shutter: '快门',
+    iso: 'ISO',
+    focal: '焦距',
+    time: '拍摄时间',
+    colorSpace: '色彩空间',
+    dimensions: '尺寸',
+    gps: 'GPS 坐标',
+  },
+
+
 };

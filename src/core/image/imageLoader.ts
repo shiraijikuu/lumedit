@@ -152,7 +152,7 @@ export async function decodeFull(
 
 // ---------------- EXIF ----------------
 
-interface ParsedExif {
+export interface ParsedExif {
   Orientation?: number;
   latitude?: number;
   longitude?: number;
@@ -166,6 +166,11 @@ interface ParsedExif {
   ExposureTime?: number;
   FocalLength?: number;
   [k: string]: unknown;
+}
+
+/** EXIF 查看面板用：全量解析（相机/镜头/曝光/时间/GPS），失败返回 null */
+export async function readFullExif(buffer: ArrayBuffer): Promise<ParsedExif | null> {
+  return safeParseExif(buffer);
 }
 
 async function safeParseExif(buffer: ArrayBuffer): Promise<ParsedExif | null> {

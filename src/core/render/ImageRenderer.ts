@@ -24,6 +24,9 @@ export class ImageRenderer {
   private outW = 0;
   private outH = 0;
   private compareOriginal = false;
+  /** 分屏对比：左半画原图，splitX ∈ (0,1) 为分割线位置 */
+  private splitEnabled = false;
+  private splitX = 0.5;
   private readonly restoreHooks: Array<() => void> = [];
   /** 中间纹理池：拖动滑块时逐帧复用，不再反复分配/销毁全分辨率纹理 */
   private pool: TexturePool | null = null;
@@ -116,6 +119,12 @@ export class ImageRenderer {
     if (this.compareOriginal === on) return;
     this.compareOriginal = on;
     this.renderPreview();
+  }
+
+  /** 分屏对比开关与分割线位置（0~1，画布宽度比例） */
+  setSplit(on: boolean, x = this.splitX): void {
+    this.splitEnabled = on && !this.compareOriginal;
+    this.splitX = Math.min(0.98, Math.max(0.02, x));
   }
 
   setInputImage(bitmap: ImageBitmap): void {
@@ -330,7 +339,84 @@ export class ImageRenderer {
     // 5. 设置绘制视口并输出
     gl.viewport(offsetX, offsetY, drawWidth, drawHeight);
     this.blit.draw(gl, texture);
+
+    // 6. 分屏对比：左半改画原图（同视口映射，保证对齐）
+    if (this.splitEnabled && !this.compareOriginal && this.inputTexture && texture !== this.inputTexture) {
+      const cut = Math.floor(pixelWidth * this.splitX);
+      if (cut > offsetX) {
+        gl.enable(gl.SCISSOR_TEST);
+        gl.scissor(offsetX, 0, Math.min(pixelWidth, cut) - offsetX, pixelHeight);
+        this.blit.draw(gl, this.inputTexture);
+        gl.disable(gl.SCISSOR_TEST);
+      }
+    }
     gl.viewport(0, 0, pixelWidth, pixelHeight);
+  }
+
+  /**
+   * 剪裁警告蒙版：把当前输出降采样渲染后按亮度分类
+   * （高光溢出→红、阴影溢出→蓝、其余透明），写入指定 2D 画布。节流由调用方负责。
+   */
+  renderClipMask(out: HTMLCanvasElement): boolean {
+    const gl = this.gl;
+    const tex = this.currentTexture ?? this.inputTexture;
+    if (!gl || !tex || !this.currentTexture) return false;
+    const W = this.context.width;
+    const H = this.context.height;
+    if (W <= 0 || H <= 0) return false;
+    const w = 360;
+    const h = Math.max(1, Math.round((H / W) * w));
+
+    let fbo: WebGLFramebuffer | null = null;
+    let tex2: WebGLTexture | null = null;
+    try {
+      tex2 = gl.createTexture();
+      if (!tex2) return false;
+      gl.bindTexture(gl.TEXTURE_2D, tex2);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      fbo = attachTextureToFBO(gl, tex2);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.viewport(0, 0, w, h);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      this.blit.draw(gl, tex);
+
+      const pixels = new Uint8Array(w * h * 4);
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+
+      const img = new ImageData(w, h);
+      for (let i = 0; i < w * h; i++) {
+        const r = pixels[i * 4], g = pixels[i * 4 + 1], b = pixels[i * 4 + 2];
+        const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+        const o = i * 4;
+        if (luma >= 252) {
+          img.data[o] = 255; img.data[o + 1] = 64; img.data[o + 2] = 64; img.data[o + 3] = 165;
+        } else if (luma <= 3) {
+          img.data[o] = 64; img.data[o + 1] = 120; img.data[o + 2] = 255; img.data[o + 3] = 165;
+        }
+      }
+      // readPixels 原点在左下，翻回顶部原点
+      const flipped = new ImageData(w, h);
+      for (let y = 0; y < h; y++) {
+        const src = (h - 1 - y) * w * 4;
+        flipped.data.set(img.data.subarray(src, src + w * 4), y * w * 4);
+      }
+      out.width = w;
+      out.height = h;
+      out.getContext('2d')!.putImageData(flipped, 0, 0);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      if (fbo) gl.deleteFramebuffer(fbo);
+      if (tex2) gl.deleteTexture(tex2);
+    }
   }
 
   resize(): void {

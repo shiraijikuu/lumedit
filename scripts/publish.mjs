@@ -67,6 +67,7 @@ const uploadBase = rel.upload_url.replace(/\{\?name,label\}/, '');
 const assets = [
   `release/LumEdit-${version}-setup.exe`,
   `release/LumEdit-${version}-setup.exe.blockmap`,
+  `release/LumEdit-${version}-portable.exe`,
   `release/latest.yml`,
 ].filter((p) => existsSync(path.join(root, p)));
 if (assets.length === 0) die('release/ 下没有可上传的资产，先执行 npm run dist');

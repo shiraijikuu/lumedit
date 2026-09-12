@@ -1,12 +1,13 @@
 <template>
   <div class="app" @dragover.prevent @drop.prevent="onDrop">
-    <TopBar @check-update="manualCheck" @open-about="aboutOpen = true" />
+    <TopBar @check-update="manualCheck" @open-about="aboutOpen = true" @open-exif="exifOpen = true" />
     <main class="workspace">
       <EditorCanvas />
       <RightPanel />
     </main>
     <StatusBar @check-update="manualCheck" />
     <AboutModal :open="aboutOpen" @close="aboutOpen = false" />
+    <ExifModal :open="exifOpen" @close="exifOpen = false" />
     <Toaster />
   </div>
 </template>
@@ -18,6 +19,7 @@ import StatusBar from './components/StatusBar.vue';
 import RightPanel from './components/RightPanel.vue';
 import EditorCanvas from './components/EditorCanvas.vue';
 import AboutModal from './components/AboutModal.vue';
+import ExifModal from './components/ExifModal.vue';
 import Toaster from './components/ui/Toaster.vue';
 import { useEditorStore } from './stores/editor';
 import { useUpdate } from './composables/useUpdate';
@@ -26,6 +28,7 @@ import { getLocale } from './i18n';
 const store = useEditorStore();
 const { checkNow } = useUpdate();
 const aboutOpen = ref(false);
+const exifOpen = ref(false);
 
 function manualCheck(): void {
   void checkNow(false);
@@ -48,6 +51,9 @@ function onKeydown(e: KeyboardEvent): void {
   } else if (ctrl && e.shiftKey && e.key.toLowerCase() === 'c' && !typing) {
     e.preventDefault();
     void store.copyToClipboard();
+  } else if (e.key.toLowerCase() === 'j' && !typing && !ctrl && !e.altKey) {
+    e.preventDefault();
+    store.toggleClipWarn();
   } else if (ctrl && e.key.toLowerCase() === 'o' && !typing) {
     e.preventDefault();
     void store.openPicker();

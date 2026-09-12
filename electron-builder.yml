@@ -17,8 +17,11 @@ win:
   target:
     - target: nsis
       arch: [x64]
+      artifactName: LumEdit-${version}-setup.${ext}
+    - target: portable
+      arch: [x64]
+      artifactName: LumEdit-${version}-portable.${ext}
   icon: build/icon.ico
-  artifactName: LumEdit-${version}-setup.${ext}
 nsis:
   oneClick: false
   perMachine: false

@@ -1,4 +1,4 @@
-export default {
+export  default {
   common: {
     reset: 'Reset',
     resetAll: 'Reset All',
@@ -25,6 +25,7 @@ export default {
     label: 'Language',
   },
   topbar: {
+    exif: 'Info',
     copyEdits: 'Copy',
     pasteEdits: 'Paste',
     copyEditsTitle: 'Copy edits (Ctrl+Alt+C)',
@@ -59,6 +60,11 @@ export default {
     resetAll: 'Reset Geometry',
   },
   canvas: {
+    guide: 'Guides',
+    thirds: 'Thirds',
+    grid: 'Grid',
+    golden: 'Golden ratio',
+    off: 'Off',
     pickerTip: 'Picker: click a neutral grey area on the image (Esc to cancel)',
     cropTip: 'Drag a crop box on the image, fine-tune with handles',
     cancelCrop: 'Cancel · Esc',
@@ -135,6 +141,8 @@ export default {
     untitled: 'Untitled LUT',
   },
   exportPanel: {
+    longEdge: 'Long edge {v}px',
+    outPx: 'Output {w} × {h}px',
     clipboardBtn: 'Copy to clipboard',
     clipboardDone: 'Copied to clipboard, paste it anywhere',
     format: 'Format',
@@ -200,6 +208,7 @@ export default {
     pastedName: 'Pasted edits',
   },
   msg: {
+    exifFail: 'Failed to read EXIF',
     presetFail: 'Preset operation failed: {v}',
     lutBuiltinFail: 'Built-in LUT failed to load: {v}',
     lutFileFail: 'LUT file cannot be loaded:\n{v}',
@@ -227,7 +236,21 @@ export default {
     foundManual: 'A revision (build {b}) is available and requires a manual download.\n\n{notes}\n\nOpen the downloads page?',
     latest: 'You are on the latest version.',
     checkFail: 'Update check failed: {v}',
+  },  exif: {
+    title: 'Photo info (EXIF)',
+    empty: 'No metadata to display',
+    camera: 'Camera',
+    lens: 'Lens',
+    aperture: 'Aperture',
+    shutter: 'Shutter',
+    iso: 'ISO',
+    focal: 'Focal length',
+    time: 'Date taken',
+    colorSpace: 'Color space',
+    dimensions: 'Dimensions',
+    gps: 'GPS coords',
   },
+
   slider: {
     valTitle: 'Click to type a value ({min} ~ {max}), double-click to reset',
   },

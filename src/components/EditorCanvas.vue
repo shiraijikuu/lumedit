@@ -13,6 +13,16 @@
       <!-- 裁剪层 -->
       <div v-if="isCrop" class="overlay-layer" @pointerdown.self="cropDrawStart">
         <div class="crop-box" :style="cropBoxStyle" @pointerdown.stop="cropMoveStart">
+          <div class="crop-guides" :data-mode="store.cropGuide">
+            <i v-for="n in guideV" :key="'v' + n" class="gv" :style="{ left: `${(n / (guideV + 1)) * 100}%` }"></i>
+            <i v-for="n in guideH" :key="'h' + n" class="gh" :style="{ top: `${(n / (guideH + 1)) * 100}%` }"></i>
+            <template v-if="store.cropGuide === 'golden'">
+              <i class="gv golden" style="left: 38.2%"></i>
+              <i class="gv golden" style="left: 61.8%"></i>
+              <i class="gh golden" style="top: 38.2%"></i>
+              <i class="gh golden" style="top: 61.8%"></i>
+            </template>
+          </div>
           <span
             v-for="h in HANDLES"
             :key="h"
@@ -34,10 +44,24 @@
         draggable="false"
         @load="onWmPreviewLoad"
       />
+
+      <!-- 剪裁警告蒙版（高光红 / 阴影蓝） -->
+      <canvas v-if="store.clipWarn && !isCrop" ref="clipCanvasRef" class="clip-overlay"></canvas>
+
+      <!-- 分屏对比分割线（可拖动） -->
+      <div
+        v-if="store.splitCompare && !isCrop"
+        class="split-divider"
+        :style="{ left: `${store.splitX * 100}%` }"
+        @pointerdown.stop="splitDragStart"
+      >
+        <span class="split-knob">↔</span>
+      </div>
     </div>
 
     <!-- 裁剪确认条 -->
     <div v-if="isCrop" class="crop-toolbar glass fade-in">
+      <button class="ghost" @click="store.cycleCropGuide()">{{ t('canvas.guide') }}：{{ t(`canvas.${store.cropGuide}`) }}</button>
       <span class="crop-tip">{{ t('canvas.cropTip') }}</span>
       <button class="ghost" @click="cancelCrop">{{ t('canvas.cancelCrop') }}</button>
       <button class="primary" @click="applyCrop">{{ t('canvas.applyCrop') }}</button>
@@ -87,6 +111,8 @@ const passthrough = new PassthroughStage();
 const editBundle = createEditStageBundle();
 const lutStage = editBundle.lut;
 
+const clipCanvasRef = ref<HTMLCanvasElement | null>(null);
+let clipTimer: number | null = null;
 const viewportSize = reactive({ w: 0, h: 0 });
 const stageBaseSize = reactive({ w: 0, h: 0 });
 // camera-watermark 预览整图的自然尺寸（画框/模糊卡片可能改变输出比例）
@@ -94,6 +120,9 @@ const wmNatural = reactive({ w: 0, h: 0 });
 let resizeObserver: ResizeObserver | null = null;
 
 const isCrop = computed(() => store.mode === 'crop');
+// 裁剪参考线：三分(2+2) / 网格(3+3) / 黄金比例(独立) / 关闭
+const guideV = computed(() => (store.cropGuide === 'grid' ? 3 : store.cropGuide === 'thirds' ? 2 : 0));
+const guideH = computed(() => guideV.value);
 // 舞台比例只要存在水印整图就按其走（含重建期间，避免尺寸跳变）；显隐由 CSS 透明度控制
 const wmShow = computed(
   () => !!store.params.watermark?.enabled && !!store.wmPreviewUrl
@@ -168,6 +197,56 @@ function feedLut(): void {
   // 纹理替换本身不触发渲染，必须让管线带着新 3D 纹理重绘一次
   renderer?.setParams(store.params);
 }
+
+// ---------- 分屏对比 / 剪裁警告 ----------
+function splitDragStart(e: PointerEvent): void {
+  const canvas = canvasRef.value;
+  if (!canvas) return;
+  const move = (ev: PointerEvent) => {
+    const r = canvas.getBoundingClientRect();
+    store.setSplitX((ev.clientX - r.left) / r.width);
+    renderer?.setSplit(true, store.splitX);
+    renderer?.repaint();
+  };
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+  move(e);
+}
+
+watch(
+  () => store.splitCompare,
+  (v) => {
+    renderer?.setSplit(v, store.splitX);
+    renderer?.repaint();
+  }
+);
+watch(
+  () => store.splitX,
+  (x) => {
+    renderer?.setSplit(store.splitCompare, x);
+    renderer?.repaint();
+  }
+);
+watch(
+  () => store.clipWarn,
+  (on) => {
+    if (clipTimer !== null) {
+      window.clearInterval(clipTimer);
+      clipTimer = null;
+    }
+    if (on) {
+      const refresh = () => {
+        if (clipCanvasRef.value && renderer) renderer.renderClipMask(clipCanvasRef.value);
+      };
+      refresh();
+      clipTimer = window.setInterval(refresh, 500);
+    }
+  }
+);
 
 // ---------- 缩放 / 平移 ----------
 // 与 camera-watermark 完全一致：以鼠标指针为不动点缩放（transform-origin 为舞台中心）
@@ -409,6 +488,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  if (clipTimer !== null) window.clearInterval(clipTimer);
   resizeObserver?.disconnect();
   window.removeEventListener('keydown', onKey);
   store.registerEditedCapture(null);
@@ -522,6 +602,61 @@ watch(
   height: 100%;
   display: block;
   border-radius: 2px;
+}
+.clip-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.crop-guides {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.crop-guides .gv {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.45);
+}
+.crop-guides .gh {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.45);
+}
+.crop-guides .golden {
+  background: rgba(255, 214, 120, 0.6);
+}
+.split-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #fff;
+  cursor: ew-resize;
+  z-index: 5;
+}
+.split-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  color: #111;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
 }
 .overlay-layer {
   position: absolute;
