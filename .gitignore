@@ -7,3 +7,5 @@ test/smoke/smoke.bundle.js
 .DS_Store
 .vscode/
 .idea/
+release-basic/
+releases/

@@ -410,6 +410,8 @@ function registerIpc(): void {
 
   // 界面语言切换：同步主进程并重建原生菜单
   ipcMain.handle('app:setLocale', (_e, locale: 'zh-CN' | 'en') => {
+    // IPC 不信任渲染层类型标注：非法值一律忽略，保持当前语言
+    if (locale !== 'zh-CN' && locale !== 'en') return;
     setMainLocale(locale);
     Menu.setApplicationMenu(buildMenu());
   });
