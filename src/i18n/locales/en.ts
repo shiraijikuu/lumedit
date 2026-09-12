@@ -29,6 +29,8 @@ export  default {
     copyEdits: 'Copy',
     pasteEdits: 'Paste',
     copyEditsTitle: 'Copy edits (Ctrl+Alt+C)',
+    splitTitle: 'Split compare: original left / edited right',
+    clipTitle: 'Clipping warning: highlights red, shadows blue (J)',
     pasteEditsTitle: 'Paste edits (Ctrl+Alt+V)',
     brandSub: 'Light Editor',
     openImage: 'Open Image',

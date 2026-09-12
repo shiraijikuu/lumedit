@@ -65,7 +65,7 @@
       </CollapseSection>
 
       <CollapseSection :default-open="false">
-        <template #title>{{ t('gradation.title') }}</template>
+        <template #title>{{ t('gradation.title') }}<span class="pro-badge">{{ t('adjust.proBadge') }}</span></template>
         <template #actions>
           <button type="button" class="ghost mini" @click="resetGradation">{{ t('common.reset') }}</button>
         </template>

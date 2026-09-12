@@ -29,6 +29,8 @@ export  default {
     copyEdits: '复制',
     pasteEdits: '粘贴',
     copyEditsTitle: '复制当前调整（Ctrl+Alt+C）',
+    splitTitle: '分屏对比：左侧原图 / 右侧修改',
+    clipTitle: '剪裁警告：高光标红、阴影标蓝（J）',
     pasteEditsTitle: '粘贴调整（Ctrl+Alt+V）',
     brandSub: '光影轻修',
     openImage: '打开图片',
