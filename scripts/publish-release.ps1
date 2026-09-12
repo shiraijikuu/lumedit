@@ -4,7 +4,7 @@ $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $repo = 'shiraijikuu/lumedit'
-$tag = 'v0.1.0'
+$tag = 'v0.2.0'
 $root = Split-Path -Parent $PSScriptRoot
 
 # 1) 取令牌：写 ASCII 请求文件，用 cmd 输入重定向喂给 git（规避子进程 stdin 编码/管道差异）
@@ -31,7 +31,7 @@ try {
   $rel = Invoke-RestMethod -Method Get -Uri "https://api.github.com/repos/$repo/releases/tags/$tag" -Headers $auth
   "release 已存在: id=$($rel.id)"
 } catch {
-  $body = @{ tag_name = $tag; name = 'LumEdit v0.1.0'; body = $notes; draft = $false; prerelease = $false } | ConvertTo-Json
+  $body = @{ tag_name = $tag; name = 'LumEdit v0.2.0'; body = $notes; draft = $false; prerelease = $false } | ConvertTo-Json
   $rel = Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/$repo/releases" -Headers $auth -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
   "release 已创建: id=$($rel.id)"
 }
@@ -57,7 +57,7 @@ function Upload-Asset($relPath, $mime) {
   "  下载: $($a.browser_download_url)"
 }
 
-Upload-Asset 'release\LumEdit-0.1.0-setup.exe' 'application/octet-stream'
+Upload-Asset 'release\LumEdit-0.2.0-setup.exe' 'application/octet-stream'
 Upload-Asset 'release\latest.yml' 'application/octet-stream'
-Upload-Asset 'release\LumEdit-0.1.0-setup.exe.blockmap' 'application/octet-stream'
+Upload-Asset 'release\LumEdit-0.2.0-setup.exe.blockmap' 'application/octet-stream'
 'ALL_DONE'

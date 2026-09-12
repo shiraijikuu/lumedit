@@ -2,16 +2,15 @@
 
 一款 **Windows 桌面端、纯本地、零上传** 的轻量单张修图工具。
 Electron + Vue 3 + Vite + TypeScript + Pinia + WebGL2，专注「RAW/JPEG 导入 + 裁剪 + 深化调色 + LUT + 水印 + 保真导出」。
-中英双语界面，同一套源码编译出 **完整版 LumEdit** 与 **基础版 LumEdit Basic** 两个发行档。
+中英双语界面。
 
 ---
 
 ## 一、功能
 
-### 通用能力（两个版本均含）
 - **导入**：JPG / PNG / WebP；**RAW 兼容**（ARW / DNG / NEF / CR2 / CR3 / RAF / ORF / RW2 等 20 种扩展名）——提取 RAW 内嵌的全尺寸 JPEG 预览（已用索尼 a7c2 ARW 7008×4672 验证），不做解拜耳、零额外依赖；读取 EXIF，自动按 Orientation 1–8 校正方向（RAW 内嵌图缺 Orientation 时按 RAW TIFF 的 Orientation 转正）
 - **几何**：自由裁剪、固定比例（1:1 / 3:2 / 2:3 / 4:3 / 3:4 / 16:9 / 9:16）、90° 旋转、任意角度、水平/垂直翻转
-- **深化调色·第一档**：曝光、亮度、对比度、高光、阴影、白色、黑色、色温、色调、清晰度、去朦胧、饱和度、自然饱和；RGB 主/红/绿/蓝四通道色调曲线（加点、拖拽、双击删点）+ 实时直方图
+- **深化调色**：曝光、亮度、对比度、高光、阴影、白色、黑色、色温、色调、清晰度、去朦胧、饱和度、自然饱和；RGB 主/红/绿/蓝四通道色调曲线（加点、拖拽、双击删点）+ 实时直方图；8 色相 HSL 混色器（色相/饱和/明度）；阴影/中间调/高光颜色分级；晕影 / 颗粒 / 锐化 / 降噪效果
 - **LUT**：19 款内置 `.cube`（六大场景分类）+ 外部 `.cube` 导入，强度 0–100%；「我的 LUT」库支持命名、分类、持久化（存于 userData，重启仍在）
 - **预览**：缩放 / 平移 / 适配、按住查看原图
 - **撤销 / 重做**：只存参数快照，拖动不压栈、松手压栈，上限 50 步
@@ -22,16 +21,6 @@ Electron + Vue 3 + Vite + TypeScript + Pinia + WebGL2，专注「RAW/JPEG 导入
 - **检查更新**：electron-updater 语义化自动更新 + build 号手动下载双轨
 - **双语**：简体中文 / English 一键切换并持久化；原生菜单、系统对话框、更新提示同步双语
 
-### 完整版独有（第二档）
-- 8 色相 HSL 混色器（色相/饱和/明度）
-- 阴影/中间调/高光颜色分级
-- 晕影 / 颗粒 / 锐化 / 降噪效果
-
-### 双版本发行
-同一套源码经编译期档位开关 `__APP_TIER__`（`LUMEDIT_TIER=basic/full`）产出两个安装包：
-**LumEdit**（完整版）与 **LumEdit Basic**（基础版）。独立 appId / 产品名 / 安装目录，可共存安装。
-基础版的第二档 Stage 与 UI 由 tree-shaking 直接剔除，不增加体积。
-
 ---
 
 ## 二、技术栈与渲染管线
@@ -39,7 +28,7 @@ Electron + Vue 3 + Vite + TypeScript + Pinia + WebGL2，专注「RAW/JPEG 导入
 | 层 | 选型 |
 |---|---|
 | 桌面壳 | Electron（主进程 / preload / IPC，主进程 i18n） |
-| 前端 | Vue 3 + Vite + TypeScript（`__APP_TIER__` 编译期分档） |
+| 前端 | Vue 3 + Vite + TypeScript |
 | 状态 | Pinia |
 | 色彩渲染 | WebGL2（3D LUT 纹理、曲线 LUT 烘焙） |
 | RAW | 自研内嵌 JPEG 预览提取器（marker walk，无 libraw） |
@@ -70,8 +59,7 @@ npm install        # 安装依赖（Electron 下载慢可设 ELECTRON_MIRROR=htt
 npm run dev        # 启动 Vite 开发服（配合 Electron 主进程）
 npm run typecheck  # 仅类型检查（vue-tsc，strict，含 electron/ 目录）
 npm run build      # 类型检查 + 构建渲染层/主进程/preload
-npm run dist:full  # 构建并打包完整版安装包到 release/
-npm run dist:basic # 构建并打包基础版安装包到 release-basic/
+npm run dist       # 构建并打包 Windows 安装包到 release/
 ```
 
 ### 冒烟测试
@@ -120,12 +108,8 @@ node scripts/gen-luts.mjs   # 重新生成全部 .cube 并更新 manifest，面�
 https://cdn.jsdelivr.net/gh/shiraijikuu/lumedit@main/update.json
 ```
 
-发布流程：打 tag → `npm run dist:full` / `dist:basic` → 把 `release/`、`release-basic/` 下安装包
-与 `latest.yml` 上传到 GitHub Release（可参考 `scripts/publish-release.ps1`）→ 更新仓库根目录 `update.json`。
-
-> **注意**：完整版与基础版各自产出一份 `latest.yml`（分别指向自家安装包）。上传到同一个
-> GitHub Release 时不能同名共存；两个版本的应用当前又都默认拉取 `latest.yml`。在给基础版
-> 配置独立更新 channel 之前，同一 Release 只应上传其中一份 `latest.yml`。
+发布流程：打 tag → `npm run dist` → 把 `release/` 下安装包与 `latest.yml` 上传到 GitHub Release
+（可参考 `scripts/publish-release.ps1`）→ 更新仓库根目录 `update.json`。
 
 ---
 
@@ -178,7 +162,6 @@ lumedit/
 │  ├─ components/       Vue 组件（画布、顶栏、右侧面板、关于弹窗、UI 控件）
 │  │  ├─ color/         曲线编辑器、直方图
 │  │  └─ panels/color/  曲线 / HSL / 分级 / 效果面板
-│  ├─ config/           编译期档位（basic / full）
 │  ├─ core/
 │  │  ├─ render/        WebGL2：ImageRenderer、BlitProgram、Pipeline、各 Stage、曲线 LUT 烘焙
 │  │  ├─ lut/           .cube 解析与 LutManager
