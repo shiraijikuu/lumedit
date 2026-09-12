@@ -110,7 +110,6 @@ export default {
     huePurple: '紫',
     hueMagenta: '品红',
     hint: '双击滑块数值可复位单项；曲线双击节点删除',
-    proBadge: '专业',
   },
   lut: {
     scene: '场景 LUT',

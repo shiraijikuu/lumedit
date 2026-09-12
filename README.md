@@ -4,6 +4,8 @@
 Electron + Vue 3 + Vite + TypeScript + Pinia + WebGL2，专注「RAW/JPEG 导入 + 裁剪 + 深化调色 + LUT + 水印 + 保真导出」。
 中英双语界面。
 
+![LumEdit 界面：载入照片与深化调色面板](docs/screenshots/app-loaded.png)
+
 ---
 
 ## 一、功能
@@ -109,7 +111,7 @@ https://cdn.jsdelivr.net/gh/shiraijikuu/lumedit@main/update.json
 ```
 
 发布流程：打 tag → `npm run dist` → 把 `release/` 下安装包与 `latest.yml` 上传到 GitHub Release
-（可参考 `scripts/publish-release.ps1`）→ 更新仓库根目录 `update.json`。
+（`npm run publish`）→ 更新仓库根目录 `update.json`。
 
 ---
 

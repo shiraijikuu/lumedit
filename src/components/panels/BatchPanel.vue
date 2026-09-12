@@ -3,42 +3,42 @@
     <div class="panel-section">
       <div class="panel-title">{{ t('batch.title') }}</div>
       <div class="row">
-        <button style="flex: 1" @click="store.addBatchFiles()">{{ t('batch.add') }}</button>
-        <button class="ghost" :disabled="store.batchRunning" @click="store.clearBatch()">{{ t('batch.clear') }}</button>
+        <button style="flex: 1" @click="batch.addBatchFiles()">{{ t('batch.add') }}</button>
+        <button class="ghost" :disabled="batch.batchRunning" @click="batch.clearBatch()">{{ t('batch.clear') }}</button>
       </div>
       <p class="hint">{{ t('batch.hint') }}</p>
       <div class="batch-list">
-        <div v-for="it in store.batchItems" :key="it.path" class="batch-item" @dblclick="store.switchTo(it)">
+        <div v-for="it in batch.batchItems" :key="it.path" class="batch-item" @dblclick="editor.switchTo(it)">
           <span class="status-dot" :class="it.status"></span>
           <span class="batch-name" :title="it.path">{{ it.name }}</span>
           <span class="batch-status">{{ statusText(it.status) }}</span>
-          <button class="ghost mini" :disabled="store.batchRunning" @click="store.removeBatchItem(it.path)">×</button>
+          <button class="ghost mini" :disabled="batch.batchRunning" @click="batch.removeBatchItem(it.path)">×</button>
         </div>
-        <p v-if="!store.batchItems.length" class="empty">{{ t('batch.empty') }}</p>
+        <p v-if="!batch.batchItems.length" class="empty">{{ t('batch.empty') }}</p>
       </div>
     </div>
 
     <div class="panel-section">
       <div class="panel-title">{{ t('batch.outputDir') }}</div>
-      <button class="ghost" style="width: 100%" @click="store.pickBatchOutputDir()">
-        {{ store.batchOutputDir || t('batch.pickDir') }}
+      <button class="ghost" style="width: 100%" @click="batch.pickBatchOutputDir()">
+        {{ batch.batchOutputDir || t('batch.pickDir') }}
       </button>
-      <div v-if="store.batchRunning" class="progress">
+      <div v-if="batch.batchRunning" class="progress">
         <div class="progress-bar">
           <div class="progress-fill" :style="{ width: pct + '%' }"></div>
         </div>
-        <span>{{ store.batchProgress.done }} / {{ store.batchProgress.total }}</span>
+        <span>{{ batch.batchProgress.done }} / {{ batch.batchProgress.total }}</span>
       </div>
       <button
-        v-if="!store.batchRunning"
+        v-if="!batch.batchRunning"
         class="primary"
         style="width: 100%; margin-top: 12px"
-        :disabled="!store.batchItems.length"
-        @click="store.startBatch()"
+        :disabled="!batch.batchItems.length"
+        @click="batch.startBatch()"
       >
         {{ t('batch.start') }}
       </button>
-      <button v-else class="ghost" style="width: 100%; margin-top: 12px" @click="store.cancelBatch()">
+      <button v-else class="ghost" style="width: 100%; margin-top: 12px" @click="batch.cancelBatch()">
         {{ t('batch.cancelTask') }}
       </button>
     </div>
@@ -48,11 +48,13 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useEditorStore } from '@/stores/editor';
+import { useBatchStore } from '@/stores/batch';
 import { t } from '@/i18n';
 
-const store = useEditorStore();
+const editor = useEditorStore();
+const batch = useBatchStore();
 const pct = computed(() =>
-  store.batchProgress.total ? Math.round((store.batchProgress.done / store.batchProgress.total) * 100) : 0
+  batch.batchProgress.total ? Math.round((batch.batchProgress.done / batch.batchProgress.total) * 100) : 0
 );
 function statusText(s: string): string {
   const map: Record<string, string> = {

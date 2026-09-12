@@ -1,5 +1,23 @@
 # 更新日志（CHANGELOG）
 
+## 未发布（Unreleased）
+
+### 性能
+- 渲染管线中间纹理池化复用：预览 7 个 WebGL2 Stage 不再逐帧分配/销毁全分辨率纹理（2000px 下每张约 16MB），参数变化经 requestAnimationFrame 合帧，滑块拖动更跟手
+
+### 修复
+- 批量处理取消可中断进行中的导出（含水印离屏合成阶段）；进度与失败改为按条目索引上报，不同目录同名文件不再互相覆盖状态
+- **修复 dev 模式无法启动**：vite-plugin-electron 在 `type:module` 下默认注入 `lib.formats=['es']`，与用户配置 `['cjs']` 经 mergeConfig 数组拼接成双输出、同名写 `main.cjs`，不压缩构建时并发交错产生 SyntaxError；现按格式分流产物（`main.es.mjs` 仅为副产物，打包排除），preload 恢复 `.cjs` 命名
+
+### 调整
+- 移除基础版双档构建路径（electron-builder.basic.yml / dist.mjs / 编译期档位开关），第二档功能并入标准版
+- alert() 全部替换为非阻塞 toast 通知（新增 Toaster 组件）；批量处理拆分为独立 Pinia store（`stores/batch.ts`）
+- 新增 GitHub Actions CI（push/PR 自动跑 typecheck + 112 项冒烟测试）
+- 发布脚本改为跨平台 Node 版：`npm run publish`（替代 PowerShell 版，规避 PS5.1 编码与凭据问题）
+
+### 测试
+- 冒烟测试新增纹理池用例（复用 / 越界拒绝 / 空闲桶上限 / dispose），共 112 项
+
 ## v0.2.0（2026-09-12，build 4）
 
 ### 新增

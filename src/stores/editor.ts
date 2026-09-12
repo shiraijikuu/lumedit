@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import { toast } from './toast';
 import { computed, reactive, ref, shallowRef } from 'vue';
 import {
   cloneParams,
@@ -30,16 +31,8 @@ interface CwmApplyPayload {
 }
 import type { ExportFormat } from '@/core/export/exportWorker';
 import { runExport } from '@/core/export/exporter';
-import { CancelToken, runBatch, type BatchSourceItem } from '@/core/batch/batchProcessor';
 import { parseProject, serializeProject, ProjectError } from '@/core/project/projectFile';
-
-export interface BatchItem {
-  path: string;
-  name: string;
-  buffer: ArrayBuffer;
-  status: 'pending' | 'running' | 'done' | 'error';
-  message?: string;
-}
+import type { BatchItem } from './batch';
 
 export const useEditorStore = defineStore('editor', () => {
   // ---------- 当前图像 ----------
@@ -195,7 +188,7 @@ export const useEditorStore = defineStore('editor', () => {
       // LUT 异步到位后兜底重建水印整图（修复先加水印再选 LUT 时预览停留在无 LUT 底图）
       scheduleWmPreview();
     } catch (err) {
-      alert(t('msg.lutBuiltinFail', { v: err instanceof Error ? err.message : String(err) }));
+      toast('error', t('msg.lutBuiltinFail', { v: err instanceof Error ? err.message : String(err) }));
     } finally {
       lutLoading.value = false;
     }
@@ -217,7 +210,7 @@ export const useEditorStore = defineStore('editor', () => {
       lutVersion.value++;
       scheduleWmPreview();
     } catch (err) {
-      alert(t('msg.lutFileFail', { v: err instanceof Error ? err.message : String(err) }));
+      toast('error', t('msg.lutFileFail', { v: err instanceof Error ? err.message : String(err) }));
     }
   }
 
@@ -243,7 +236,7 @@ export const useEditorStore = defineStore('editor', () => {
   async function selectUserLut(id: string): Promise<void> {
     const res = await window.api.lutLib.read(id);
     if (!res) {
-      alert(t('msg.lutRemoved'));
+      toast('success', t('msg.lutRemoved'));
       return;
     }
     try {
@@ -258,7 +251,7 @@ export const useEditorStore = defineStore('editor', () => {
       lutVersion.value++;
       scheduleWmPreview();
     } catch (err) {
-      alert(t('msg.lutFail', { v: err instanceof Error ? err.message : String(err) }));
+      toast('error', t('msg.lutFail', { v: err instanceof Error ? err.message : String(err) }));
     }
   }
 
@@ -299,7 +292,7 @@ export const useEditorStore = defineStore('editor', () => {
       try {
         lutData.value = await lutManager.load(params.lut.id);
       } catch {
-        alert(t('msg.lutBuiltinGone', { v: params.lut.id ?? '' }));
+        toast('error', t('msg.lutBuiltinGone', { v: params.lut.id ?? '' }));
         lutData.value = null;
       }
     } else if (
@@ -322,7 +315,7 @@ export const useEditorStore = defineStore('editor', () => {
           lutData.value = null;
         }
       } catch {
-        alert(t('msg.userLutLost', { v: id }));
+        toast('error', t('msg.userLutLost', { v: id }));
         lutData.value = null;
       }
     } else if (!params.lut.isBuiltin && params.lut.path && externalLut.value?.path === params.lut.path) {
@@ -527,12 +520,6 @@ export const useEditorStore = defineStore('editor', () => {
   });
   const exporting = ref(false);
 
-  // ---------- 批量（P1）状态 ----------
-  const batchItems = reactive<BatchItem[]>([]);
-  const batchOutputDir = ref<string | null>(null);
-  const batchRunning = ref(false);
-  const batchProgress = reactive({ done: 0, total: 0 });
-
   // ---------- 交互模式 / 裁剪比例 ----------
   const mode = ref<'edit' | 'crop'>('edit');
   const cropAspect = ref<number | null>(null);
@@ -552,7 +539,7 @@ export const useEditorStore = defineStore('editor', () => {
   // ---------- 导出 ----------
   async function exportCurrent(): Promise<string | null> {
     if (!sourceBuffer.value || !meta.value) {
-      alert(t('msg.openImageFirst'));
+      toast('info', t('msg.openImageFirst'));
       return null;
     }
     exporting.value = true;
@@ -579,7 +566,7 @@ export const useEditorStore = defineStore('editor', () => {
       );
       return saved;
     } catch (err) {
-      alert(t('msg.exportFail', { v: err instanceof Error ? err.message : String(err) }));
+      toast('error', t('msg.exportFail', { v: err instanceof Error ? err.message : String(err) }));
       return null;
     } finally {
       exporting.value = false;
@@ -589,7 +576,7 @@ export const useEditorStore = defineStore('editor', () => {
   // ---------- 工程文件 ----------
   async function saveProjectFile(): Promise<void> {
     if (!hasImage.value) {
-      alert(t('msg.openImageFirst'));
+      toast('info', t('msg.openImageFirst'));
       return;
     }
     const json = serializeProject({
@@ -615,7 +602,7 @@ export const useEditorStore = defineStore('editor', () => {
           const buf = await window.api.readBuffer(proj.source.path);
           await loadImageObject(proj.source.path, proj.source.name, buf);
         } catch {
-          alert(t('msg.sourceLost', { v: proj.source.path }));
+          toast('error', t('msg.sourceLost', { v: proj.source.path }));
           return;
         }
       }
@@ -660,7 +647,7 @@ export const useEditorStore = defineStore('editor', () => {
           lutData.value = data;
           lutVersion.value++;
         } catch {
-          alert(t('msg.extLutLost', { v: p.lut.path ?? '' }));
+          toast('error', t('msg.extLutLost', { v: p.lut.path ?? '' }));
           params.lut.id = null;
           params.lut.path = null;
           params.lut.strength = 0;
@@ -671,105 +658,8 @@ export const useEditorStore = defineStore('editor', () => {
       // 水印预览按恢复的 cwmState 离屏重建
       scheduleWmPreview();
     } catch (err) {
-      alert(err instanceof ProjectError ? err.message : t('msg.projectFail', { v: String(err) }));
+      toast('error', err instanceof ProjectError ? err.message : t('msg.projectFail', { v: String(err) }));
     }
-  }
-
-  // ---------- 批量（P1） ----------
-  let batchToken: CancelToken | null = null;
-
-  async function addBatchFiles(): Promise<void> {
-    const results = await window.api.openImages(true);
-    if (!results) return;
-    for (const r of results) {
-      if (!batchItems.some((x) => x.path === r.path)) {
-        batchItems.push({
-          path: r.path,
-          name: r.name,
-          buffer: r.buffer,
-          status: 'pending',
-        });
-      }
-    }
-  }
-
-  function removeBatchItem(path: string): void {
-    const i = batchItems.findIndex((x) => x.path === path);
-    if (i >= 0) batchItems.splice(i, 1);
-  }
-
-  function clearBatch(): void {
-    if (batchRunning.value) return;
-    batchItems.splice(0, batchItems.length);
-  }
-
-  async function pickBatchOutputDir(): Promise<void> {
-    const dir = await window.api.pickDir();
-    if (dir) batchOutputDir.value = dir;
-  }
-
-  async function startBatch(): Promise<void> {
-    if (batchRunning.value) return;
-    if (batchItems.length === 0) {
-      alert(t('msg.addImageFirst'));
-      return;
-    }
-    if (!batchOutputDir.value) {
-      await pickBatchOutputDir();
-      if (!batchOutputDir.value) return;
-    }
-    batchRunning.value = true;
-    batchToken = new CancelToken();
-    batchItems.forEach((it) => (it.status = 'pending'));
-    batchProgress.done = 0;
-    batchProgress.total = batchItems.length;
-
-    const sources: BatchSourceItem[] = batchItems.map((it) => ({
-      path: it.path,
-      name: it.name,
-      buffer: it.buffer.slice(0),
-    }));
-    const result = await runBatch(
-      {
-        items: sources,
-        params: cloneParams(params),
-        lut: lutData.value,
-        format: exportOptions.format,
-        quality: exportOptions.quality,
-        keepExif: exportOptions.keepExif,
-        stripGps: exportOptions.stripGps,
-        scale: exportOptions.scale,
-        outputDir: batchOutputDir.value,
-        suffix: '-lumedit',
-        writeFile: (absPath, bytes) => window.api.writeFile(absPath, bytes),
-        onItemStart: (name) => {
-          const it = batchItems.find((x) => x.name === name);
-          if (it) it.status = 'running';
-        },
-        onProgress: (done) => {
-          batchProgress.done = done;
-          const current = batchItems.find((x) => x.status === 'running');
-          if (current) current.status = 'done';
-        },
-      },
-      batchToken
-    );
-    result.failed.forEach((f) => {
-      const it = batchItems.find((x) => x.name === f.name);
-      if (it) {
-        it.status = 'error';
-        it.message = f.error;
-      }
-    });
-    batchRunning.value = false;
-    const msg = result.cancelled
-      ? `已取消：成功 ${result.done} 张，失败 ${result.failed.length} 张`
-      : `批量完成：成功 ${result.done} 张${result.failed.length ? `，失败 ${result.failed.length} 张` : ''}`;
-    alert(msg);
-  }
-
-  function cancelBatch(): void {
-    batchToken?.cancel();
   }
 
   // ---------- 打开图片 ----------
@@ -841,7 +731,6 @@ export const useEditorStore = defineStore('editor', () => {
     exportOptions, exporting,
     wmPreviewUrl, wmPreviewStale, registerEditedCapture, scheduleWmPreview,
     setWatermarkEnabled, openCwmStudio, applyCwmResult, clearWatermark, refreshWmPreview,
-    batchItems, batchOutputDir, batchRunning, batchProgress,
     // history / mutate
     mutate, saveSnapshot, endScrub, scheduleCommit, undoEdit, redoEdit,
     setShowOriginal, resetView,
@@ -849,10 +738,9 @@ export const useEditorStore = defineStore('editor', () => {
     selectBuiltin, loadExternalCube, setLutStrength, removeLut, syncLutFromParams,
     // geometry
     rotate90, toggleFlipH, toggleFlipV, setCrop, resetCrop, resetGeometryAll, resetAdjust, resetColorAll,
-    // mode / zoom / export / project / batch
+    // mode / zoom / export / project
     mode, cropAspect, setMode, setCropAspect, zoomBy,
     exportCurrent, saveProjectFile, openProjectFile,
-    addBatchFiles, removeBatchItem, clearBatch, pickBatchOutputDir, startBatch, cancelBatch,
     // image
     openPicker, loadImageObject, switchTo, closeImage,
   };

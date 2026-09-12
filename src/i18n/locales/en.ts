@@ -110,7 +110,6 @@ export default {
     huePurple: 'Purple',
     hueMagenta: 'Magenta',
     hint: 'Double-click a value to reset; double-click a curve point to remove',
-    proBadge: 'Pro',
   },
   lut: {
     scene: 'Scene LUTs',

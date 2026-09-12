@@ -7,6 +7,7 @@ directories:
 files:
   - dist/**/*
   - dist-electron/**/*
+  - "!dist-electron/main.es.mjs"
   - package.json
 # 只保留中英两套 Chromium 语言包（其余约 38MB 裁掉）；应用自身界面语言由内置 i18n 提供
 electronLanguages:

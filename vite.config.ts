@@ -4,14 +4,8 @@ import electron from 'vite-plugin-electron/simple';
 import renderer from 'vite-plugin-electron-renderer';
 import { resolve } from 'node:path';
 
-// 功能档位：LUMEDIT_TIER=basic 出「基础版」（仅第一档），缺省/full 出「完整版」
-const appTier = process.env.LUMEDIT_TIER === 'basic' ? 'basic' : 'full';
-
 // Electron + Vite + Vue3 脚手架配置
 export default defineConfig({
-  define: {
-    __APP_TIER__: JSON.stringify(appTier),
-  },
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
@@ -25,10 +19,14 @@ export default defineConfig({
         vite: {
           build: {
             outDir: 'dist-electron',
-            // 插件在 package.json type:module 时默认 lib.formats=['es']，必须显式压回 cjs
-            lib: { entry: 'electron/main.ts', formats: ['cjs'], fileName: () => 'main.cjs' },
-            rollupOptions: {
-              output: { format: 'cjs', entryFileNames: '[name].cjs' },
+            // 插件默认 lib.formats=['es']（package.json type:module），mergeConfig 对数组是
+            // 拼接语义 → 实际为 ['es','cjs'] 双输出。fileName 按格式分流：ES 产物写到独立
+            // 文件（打包时排除），main.cjs 只由 CJS 输出写入，避免同名双写互相截断损坏
+            // （此前 dev 启动报 SyntaxError 即此因）。
+            lib: {
+              entry: 'electron/main.ts',
+              formats: ['cjs'],
+              fileName: (format) => (format === 'es' ? 'main.es.mjs' : 'main.cjs'),
             },
           },
         },
@@ -43,7 +41,8 @@ export default defineConfig({
               formats: ['cjs'],
               fileName: () => 'preload.cjs',
             },
-            rollupOptions: { output: { format: 'cjs', entryFileNames: '[name].cjs' } },
+            // 插件 preload 默认 entryFileNames 为 .mjs（type:module），必须显式压回 .cjs
+            rollupOptions: { output: { format: 'cjs', entryFileNames: 'preload.cjs' } },
           },
         },
       },

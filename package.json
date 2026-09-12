@@ -13,10 +13,9 @@
     "typecheck": "vue-tsc --noEmit",
     "build:smoke": "esbuild test/smoke/smoke.ts --bundle --format=esm --loader:.cube=text --outfile=test/smoke/smoke.bundle.js",
     "smoke": "npm run build:smoke && electron test/smoke/smoke-main.cjs",
-    "dist": "node scripts/dist.mjs full",
-    "dist:full": "node scripts/dist.mjs full",
-    "dist:basic": "node scripts/dist.mjs basic",
-    "dist:check": "node scripts/check-asar.mjs"
+    "dist": "vite build && electron-builder --config electron-builder.yml",
+    "dist:check": "node scripts/check-asar.mjs",
+    "publish": "node scripts/publish.mjs"
   },
   "dependencies": {
     "electron-updater": "^6.8.9",

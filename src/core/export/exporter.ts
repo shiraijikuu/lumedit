@@ -59,14 +59,32 @@ function mimeOf(format: ExportFormat): string {
   return 'image/jpeg';
 }
 
-export async function runExport(req: Omit<ExportRequest, 'jobId'>): Promise<ExportResponse> {
+export interface ExportRunOptions {
+  /** 取消探测：长耗时步骤（Worker 渲染、水印离屏合成）之后轮询，命中立即放弃 */
+  isCancelled?: () => boolean;
+}
+
+function cancelledResponse(): ExportResponse {
+  return { jobId: -1, ok: false, error: '已取消' };
+}
+
+export async function runExport(
+  req: Omit<ExportRequest, 'jobId'>,
+  opts?: ExportRunOptions
+): Promise<ExportResponse> {
+  const check = (): boolean => !!opts?.isCancelled?.();
   // 1) Worker 渲染调色后无水印 PNG
   const inter = await renderInWorker(req);
+  if (check()) return cancelledResponse();
   if (!inter.ok || !inter.bytes || !inter.width || !inter.height) {
     return { jobId: -1, ok: false, error: inter.error || '中间位图渲染失败' };
   }
 
   let bmp = await createImageBitmap(new Blob([inter.bytes], { type: 'image/png' }));
+  if (check()) {
+    bmp.close();
+    return cancelledResponse();
+  }
   let W = inter.width;
   let H = inter.height;
 
@@ -76,9 +94,13 @@ export async function runExport(req: Omit<ExportRequest, 'jobId'>): Promise<Expo
     H = Math.max(1, Math.round(H * req.scale));
   }
 
-  // 3) camera-watermark 离屏全分辨率合成（管线最后一步）
+  // 3) camera-watermark 离屏全分辨率合成（管线最后一步，最长可达 120s，取消必须在此把关）
   const wm = req.params.watermark;
   if (wm?.enabled && wm.cwmState) {
+    if (check()) {
+      bmp.close();
+      return cancelledResponse();
+    }
     const baseDataUrl = await bitmapToPngDataUrl(bmp, W, H);
     bmp.close();
     const composed = await window.api.composeCwm({
@@ -88,6 +110,7 @@ export async function runExport(req: Omit<ExportRequest, 'jobId'>): Promise<Expo
       format: 'image/png',
       quality: 1,
     });
+    if (check()) return cancelledResponse();
     bmp = await createImageBitmap(new Blob([composed.buffer], { type: 'image/png' }));
     W = composed.width;
     H = composed.height;

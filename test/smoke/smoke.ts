@@ -14,6 +14,7 @@ import { createStack, pushSnapshot, undo, redo } from '../../src/core/history/hi
 import { serializeProject, parseProject } from '../../src/core/project/projectFile';
 import { compareSemver, resolveDownloadUrl } from '../../src/core/update/updateService';
 import { createFileAccessPolicy } from '../../electron/fileAccess';
+import { TexturePool } from '../../src/core/render/texturePool';
 import kodakCube from '../../src/assets/luts/kodak-2383.cube';
 import {
   isRawFileName,
@@ -639,6 +640,33 @@ async function testNewStagesNeutral(): Promise<void> {
   bmp.close();
 }
 
+// ---------- 9. 纹理池 ----------
+function testTexturePool(): void {
+  logs.push('[texture pool]');
+  const gl = createGL();
+  const pool = new TexturePool(gl);
+  const t1 = pool.acquire(64, 48);
+  ok('池创建纹理并跟踪所有权', pool.owns(t1) && pool.liveCount === 1);
+  pool.release(t1, 64, 48);
+  ok('归还后进入空闲桶', pool.freeCount === 1 && pool.liveCount === 1);
+  const t2 = pool.acquire(64, 48);
+  ok('同尺寸复用同一纹理（ping-pong 就绪）', t2 === t1);
+  const t3 = pool.acquire(64, 64);
+  ok('不同尺寸不复用', t3 !== t1);
+  pool.release(t3, 64, 64);
+  const foreign = gl.createTexture()!;
+  pool.release(foreign, 64, 64);
+  ok('外来纹理被直接删除而非入池', !pool.owns(foreign) && pool.freeCount === 1);
+  pool.dispose();
+  ok('dispose 清空全部纹理', pool.liveCount === 0 && pool.freeCount === 0);
+
+  // 空闲桶上限：同尺寸反复借还不应累积
+  const many = [1, 2, 3, 4, 5].map(() => pool.acquire(32, 32));
+  many.forEach((t) => pool.release(t, 32, 32));
+  ok('同尺寸空闲桶有上限（超量销毁）', pool.freeCount === 3, `free=${pool.freeCount}`);
+  pool.dispose();
+}
+
 async function main(): Promise<void> {
   const logEl = document.getElementById('log');
   const write = (t: string) => {
@@ -653,6 +681,7 @@ async function main(): Promise<void> {
     testProject();
     testSemver();
     testSecurityPolicy();
+    testTexturePool();
     await testRaw();
     testCurveLut();
     testEnsureParams();

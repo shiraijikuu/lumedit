@@ -4,6 +4,7 @@ import { cloneParams, defaultEditParams } from '@/types/EditParams';
 import { BlitProgram } from './BlitProgram';
 import { runPipeline } from './renderPipeline';
 import { bitmapToTextureSource } from './gpuUtils';
+import { TexturePool, releaseTarget } from './texturePool';
 
 export class ImageRenderer {
   private readonly canvas: HTMLCanvasElement;
@@ -24,6 +25,10 @@ export class ImageRenderer {
   private outH = 0;
   private compareOriginal = false;
   private readonly restoreHooks: Array<() => void> = [];
+  /** 中间纹理池：拖动滑块时逐帧复用，不再反复分配/销毁全分辨率纹理 */
+  private pool: TexturePool | null = null;
+  /** rAF 合帧：一帧内的多次 setParams 只跑一次管线 */
+  private rafPending = false;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -85,9 +90,25 @@ export class ImageRenderer {
     this.restoreHooks.push(hook);
   }
 
+  private ensurePool(): void {
+    if (!this.gl) return;
+    if (!this.pool) this.pool = new TexturePool(this.gl);
+    this.context.pool = this.pool;
+  }
+
   setParams(params: EditParams): void {
     this.params = cloneParams(params);
-    this.renderPreview();
+    this.scheduleRender();
+  }
+
+  /** 参数变化经 rAF 合帧：同一帧内滑块的多次响应式触发只跑一次管线 */
+  private scheduleRender(): void {
+    if (this.rafPending) return;
+    this.rafPending = true;
+    requestAnimationFrame(() => {
+      this.rafPending = false;
+      this.renderPreview();
+    });
   }
 
   /** 按住显示原图：绕过全部 Stage，直接显示 Orientation 校正后的输入 */
@@ -101,7 +122,10 @@ export class ImageRenderer {
     if (this.inputBitmap) {
       this.inputBitmap.close();
     }
-    // 清空引用，避免悬空指向即将被删除的旧 currentTexture
+    // 归还上一张图的结果纹理（否则换图后池外泄漏），再清引用
+    if (this.currentTexture && this.currentTexture !== this.inputTexture && this.pool) {
+      releaseTarget(this.context, this.currentTexture, this.outW, this.outH);
+    }
     this.currentTexture = null;
     this.inputBitmap = bitmap;
     this.uploadInputTexture();
@@ -153,6 +177,12 @@ export class ImageRenderer {
 
   renderPreview(): void {
     if (!this.gl || !this.inputTexture) return;
+    this.ensurePool();
+
+    // 旧结果纹理记账（其尺寸 = 上次输出尺寸），新帧就绪后归还池
+    const prevTexture = this.currentTexture;
+    const prevW = this.outW;
+    const prevH = this.outH;
 
     let texture: WebGLTexture;
     if (this.compareOriginal) {
@@ -175,8 +205,8 @@ export class ImageRenderer {
       this.outH = this.context.height;
     }
 
-    if (this.currentTexture && this.currentTexture !== this.inputTexture && this.currentTexture !== texture) {
-      this.gl.deleteTexture(this.currentTexture);
+    if (prevTexture && prevTexture !== this.inputTexture && prevTexture !== texture) {
+      releaseTarget(this.context, prevTexture, prevW, prevH);
     }
     this.currentTexture = texture;
     this.drawToScreen(texture);
@@ -259,6 +289,7 @@ export class ImageRenderer {
   captureEdited(maxEdge = 2000): string | null {
     const gl = this.gl;
     if (!gl || !this.inputTexture) return null;
+    this.ensurePool();
 
     const savedW = this.context.width;
     const savedH = this.context.height;
@@ -275,7 +306,7 @@ export class ImageRenderer {
     if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.deleteFramebuffer(fbo);
-      if (out.texture !== this.inputTexture) gl.deleteTexture(out.texture);
+      if (out.texture !== this.inputTexture) releaseTarget(this.context, out.texture, W, H);
       this.context.width = savedW;
       this.context.height = savedH;
       return null;
@@ -284,7 +315,7 @@ export class ImageRenderer {
     gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.deleteFramebuffer(fbo);
-    if (out.texture !== this.inputTexture) gl.deleteTexture(out.texture);
+    if (out.texture !== this.inputTexture) releaseTarget(this.context, out.texture, W, H);
     this.context.width = savedW;
     this.context.height = savedH;
 
@@ -314,6 +345,9 @@ export class ImageRenderer {
     this.stages.forEach((stage) => stage.destroy());
     this.stages = [];
     this.blit.destroy();
+    this.pool?.dispose();
+    this.pool = null;
+    this.context.pool = undefined;
 
     const inputTex = this.inputTexture;
     const currentTex = this.currentTexture;
@@ -346,6 +380,10 @@ export class ImageRenderer {
     // GPU 资源全部失效，清空引用（保留 context 对象，恢复时覆盖其 gl）
     this.inputTexture = null;
     this.currentTexture = null;
+    // 池内句柄已全部失效：只清引用不发 GL 调用
+    this.pool?.clear();
+    this.pool = null;
+    this.context.pool = undefined;
     this.gl = null;
   };
 

@@ -1,0 +1,27 @@
+# CI：类型检查 + WebGL2 冒烟测试（SwiftShader 软渲染，无需 GPU）
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck (vue-tsc strict, incl. electron/)
+        run: npm run typecheck
+
+      - name: Smoke tests (Electron headless, 112 assertions)
+        run: npm run smoke

@@ -3,9 +3,9 @@ import type { EditParams } from '@/types/EditParams';
 import {
   createFullscreenQuad,
   createProgram,
-  createRGBA8Texture,
   type ProgramBundle,
 } from '../gpuUtils';
+import { acquireTarget, releaseTarget } from '../texturePool';
 
 const VERT = /* glsl */ `#version 300 es
 in vec2 aPos;
@@ -91,8 +91,8 @@ export class GeometryStage implements RenderStage {
     const outW = swap ? cropH : cropW;
     const outH = swap ? cropW : cropH;
 
-    // 2. 创建本帧输出纹理（尺寸随参数变化，由管线统一销毁）
-    const dst = createRGBA8Texture(gl, outW, outH);
+    // 2. 获取本帧输出纹理（尺寸随参数变化，由管线统一归还）
+    const dst = acquireTarget(ctx, outW, outH);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
     gl.framebufferTexture2D(
@@ -105,7 +105,7 @@ export class GeometryStage implements RenderStage {
     const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
     if (status !== gl.FRAMEBUFFER_COMPLETE) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      gl.deleteTexture(dst);
+      releaseTarget(ctx, dst, outW, outH);
       throw new Error(`[GeometryStage] FBO incomplete: 0x${status.toString(16)}`);
     }
     gl.viewport(0, 0, outW, outH);

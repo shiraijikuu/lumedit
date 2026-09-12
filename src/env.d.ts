@@ -112,8 +112,6 @@ export interface LumeditAPI {
 }
 
 declare global {
-  // 编译期档位：'basic'（仅第一档）| 'full'（第一档+第二档），由 vite define 注入
-  const __APP_TIER__: 'basic' | 'full';
   interface Window {
     api: LumeditAPI;
   }

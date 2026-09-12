@@ -4,9 +4,9 @@ import type { LutData } from '../lut/lutTypes';
 import {
   createFullscreenQuad,
   createProgram,
-  createRGBA8Texture,
   type ProgramBundle,
 } from '../gpuUtils';
+import { acquireTarget, releaseTarget } from '../texturePool';
 
 const VERT = /* glsl */ `#version 300 es
 in vec2 aPos;
@@ -117,7 +117,7 @@ export class LutStage implements RenderStage {
     }
     this.ensure(gl);
     const { width, height } = ctx;
-    const dst = createRGBA8Texture(gl, width, height);
+    const dst = acquireTarget(ctx, width, height);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
     gl.framebufferTexture2D(
@@ -129,7 +129,7 @@ export class LutStage implements RenderStage {
     );
     if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      gl.deleteTexture(dst);
+      releaseTarget(ctx, dst, width, height);
       throw new Error('[LutStage] FBO incomplete');
     }
     gl.viewport(0, 0, width, height);

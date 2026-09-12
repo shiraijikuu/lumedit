@@ -25,11 +25,17 @@ export interface BatchOptions {
   suffix: string;
   writeFile: (absPath: string, bytes: Uint8Array) => Promise<void>;
   onItemStart?: (name: string, index: number) => void;
-  onProgress?: (done: number, total: number) => void;
+  /** 每张结束（成功或失败）后触发；index = 刚结束的条目下标 */
+  onProgress?: (done: number, total: number, index: number) => void;
+  /** 单张失败即时上报（按索引，避免不同目录同名文件混淆） */
+  onItemError?: (index: number, error: string) => void;
+  /** 取消探测：批量循环与导出内部（水印合成前后）都会轮询 */
+  isCancelled?: () => boolean;
 }
 
 export interface BatchFailure {
   name: string;
+  index: number;
   error: string;
 }
 
@@ -76,17 +82,22 @@ export async function runBatch(
       const meta: ImageMeta = decoded.meta;
       decoded.bitmap.close();
 
-      const resp = await runExport({
-        buffer: item.buffer.slice(0), // Worker 会 transfer，必须给副本
-        meta,
-        params: opts.params,
-        lut: opts.lut,
-        format: opts.format,
-        quality: opts.quality,
-        keepExif: opts.keepExif,
-        stripGps: opts.stripGps,
-        scale: opts.scale,
-      });
+      const resp = await runExport(
+        {
+          buffer: item.buffer.slice(0), // Worker 会 transfer，必须给副本
+          meta,
+          params: opts.params,
+          lut: opts.lut,
+          format: opts.format,
+          quality: opts.quality,
+          keepExif: opts.keepExif,
+          stripGps: opts.stripGps,
+          scale: opts.scale,
+        },
+        { isCancelled: () => token.cancelled }
+      );
+      // 取消发生在导出内部（如水印合成）：不计为失败，直接整体返回
+      if (token.cancelled) return { done, failed, cancelled: true };
       if (!resp.ok || !resp.bytes) throw new Error(resp.error || '导出失败');
 
       // 文件名：原名 + 后缀，重名自动编号
@@ -101,9 +112,12 @@ export async function runBatch(
       await opts.writeFile(absPath, resp.bytes);
       done++;
     } catch (err) {
-      failed.push({ name: item.name, error: err instanceof Error ? err.message : String(err) });
+      const msg = err instanceof Error ? err.message : String(err);
+      failed.push({ name: item.name, index: i, error: msg });
+      opts.onItemError?.(i, msg);
     } finally {
-      opts.onProgress?.(i + 1, opts.items.length);
+      // 取消后的收尾不再推进进度条，避免把未完成条目标成已完成
+      if (!token.cancelled) opts.onProgress?.(i + 1, opts.items.length, i);
     }
   }
   return { done, failed, cancelled: token.cancelled };

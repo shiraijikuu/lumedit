@@ -7,6 +7,7 @@ import {
   createRGBA8Texture,
   type ProgramBundle,
 } from '../gpuUtils';
+import { acquireTarget, releaseTarget } from '../texturePool';
 import { bakeCurveLut, CURVE_LUT_SIZE, isIdentityCurve } from '../curveLut';
 
 const VERT = /* glsl */ `#version 300 es
@@ -93,12 +94,12 @@ export class CurveStage implements RenderStage {
     this.uploadLut(gl, params);
     const { width, height } = ctx;
 
-    const dst = createRGBA8Texture(gl, width, height);
+    const dst = acquireTarget(ctx, width, height);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, dst, 0);
     if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      gl.deleteTexture(dst);
+      releaseTarget(ctx, dst, width, height);
       throw new Error('[CurveStage] FBO incomplete');
     }
     gl.viewport(0, 0, width, height);

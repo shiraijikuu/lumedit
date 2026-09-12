@@ -7,6 +7,7 @@
     </main>
     <StatusBar @check-update="manualCheck" />
     <AboutModal :open="aboutOpen" @close="aboutOpen = false" />
+    <Toaster />
   </div>
 </template>
 
@@ -17,6 +18,7 @@ import StatusBar from './components/StatusBar.vue';
 import RightPanel from './components/RightPanel.vue';
 import EditorCanvas from './components/EditorCanvas.vue';
 import AboutModal from './components/AboutModal.vue';
+import Toaster from './components/ui/Toaster.vue';
 import { useEditorStore } from './stores/editor';
 import { useUpdate } from './composables/useUpdate';
 import { getLocale } from './i18n';

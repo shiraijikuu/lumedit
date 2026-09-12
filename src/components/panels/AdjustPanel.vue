@@ -18,10 +18,9 @@
       <CurveSection />
     </CollapseSection>
 
-    <template v-if="IS_FULL">
       <CollapseSection :default-open="false">
         <template #title>
-          {{ t('adjust.hsl') }}<span class="pro-badge">{{ t('adjust.proBadge') }}</span>
+          {{ t('adjust.hsl') }}
         </template>
         <template #actions>
           <button type="button" class="ghost mini" @click="resetHsl">{{ t('common.reset') }}</button>
@@ -31,7 +30,7 @@
 
       <CollapseSection :default-open="false">
         <template #title>
-          {{ t('adjust.grade') }}<span class="pro-badge">{{ t('adjust.proBadge') }}</span>
+          {{ t('adjust.grade') }}
         </template>
         <template #actions>
           <button type="button" class="ghost mini" @click="resetGrade">{{ t('common.reset') }}</button>
@@ -41,14 +40,13 @@
 
       <CollapseSection :default-open="false">
         <template #title>
-          {{ t('adjust.effects') }}<span class="pro-badge">{{ t('adjust.proBadge') }}</span>
+          {{ t('adjust.effects') }}
         </template>
         <template #actions>
           <button type="button" class="ghost mini" @click="resetEffects">{{ t('common.reset') }}</button>
         </template>
         <EffectsSection />
       </CollapseSection>
-    </template>
 
     <div class="panel-foot">
       <button type="button" class="ghost" @click="resetAll">{{ t('common.resetAll') }}</button>
@@ -61,7 +59,6 @@
 import { defaultEditParams, linearCurve } from '@/types/EditParams';
 import { useEditorStore } from '@/stores/editor';
 import { t } from '@/i18n';
-import { IS_FULL_TIER as IS_FULL } from '@/config/tier';
 import CollapseSection from '../ui/CollapseSection.vue';
 import ToneSection from './color/ToneSection.vue';
 import CurveSection from './color/CurveSection.vue';
@@ -104,17 +101,6 @@ function resetAll(): void {
 <style scoped>
 .color-panel {
   padding-bottom: 4px;
-}
-.pro-badge {
-  margin-left: 6px;
-  padding: 1px 6px;
-  font-size: 9.5px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  color: #7db8ff;
-  background: var(--accent-soft);
-  border-radius: 5px;
-  text-transform: none;
 }
 button.mini {
   padding: 2px 8px;
