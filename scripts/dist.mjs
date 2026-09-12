@@ -11,7 +11,7 @@ const root = path.resolve(import.meta.dirname, '..');
 // 输出目录：优先 E 盘固定位置（与 README 说明一致），无 E 盘的机器回退用户主目录
 const outDir =
   process.env.LUMEDIT_DIST_OUT ||
-  (fs.existsSync('E:/') ? 'E:\lumedit-dist' : path.join(os.homedir(), 'lumedit-dist'));
+  (fs.existsSync('E:/') ? 'E:/lumedit-dist' : path.join(os.homedir(), 'lumedit-dist'));
 
 function run(cmd, args) {
   console.log(`[dist] $ ${cmd} ${args.join(' ')}`);
