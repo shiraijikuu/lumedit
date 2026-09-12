@@ -1,7 +1,7 @@
 # LumEdit · 光影轻修
 
 一款 **Windows 桌面端、纯本地、零上传** 的轻量单张修图工具。
-Electron + Vue 3 + Vite + TypeScript + Pinia + WebGL2，专注「RAW/JPEG 导入 + 裁剪 + 深化调色 + LUT + 水印 + 保真导出」。
+Electron + Vue 3 + Vite + TypeScript + Pinia + WebGL2，专注「RAW/JPEG 导入 + 裁剪 + 深化调色 + 局部渐变 + LUT + 水印 + 保真导出」。
 中英双语界面。
 
 ![LumEdit 界面：载入照片与深化调色面板](docs/screenshots/app-loaded.png)
@@ -10,18 +10,35 @@ Electron + Vue 3 + Vite + TypeScript + Pinia + WebGL2，专注「RAW/JPEG 导入
 
 ## 一、功能
 
+### 编辑
+
 - **导入**：JPG / PNG / WebP；**RAW 兼容**（ARW / DNG / NEF / CR2 / CR3 / RAF / ORF / RW2 等 20 种扩展名）——提取 RAW 内嵌的全尺寸 JPEG 预览（已用索尼 a7c2 ARW 7008×4672 验证），不做解拜耳、零额外依赖；读取 EXIF，自动按 Orientation 1–8 校正方向（RAW 内嵌图缺 Orientation 时按 RAW TIFF 的 Orientation 转正）
-- **几何**：自由裁剪、固定比例（1:1 / 3:2 / 2:3 / 4:3 / 3:4 / 16:9 / 9:16）、90° 旋转、任意角度、水平/垂直翻转
+- **几何**：自由裁剪、固定比例（1:1 / 3:2 / 2:3 / 4:3 / 3:4 / 16:9 / 9:16）、90° 旋转、任意角度、水平/垂直翻转；**裁剪参考线**（三分线 / 网格 / 黄金比例，裁剪模式下一键切换）
 - **深化调色**：曝光、亮度、对比度、高光、阴影、白色、黑色、色温、色调、清晰度、去朦胧、饱和度、自然饱和；RGB 主/红/绿/蓝四通道色调曲线（加点、拖拽、双击删点）+ 实时直方图；8 色相 HSL 混色器（色相/饱和/明度）；阴影/中间调/高光颜色分级；晕影 / 颗粒 / 锐化 / 降噪效果
-- **LUT**：19 款内置 `.cube`（六大场景分类）+ 外部 `.cube` 导入，强度 0–100%；「我的 LUT」库支持命名、分类、持久化（存于 userData，重启仍在）
-- **预览**：缩放 / 平移 / 适配、按住查看原图
-- **撤销 / 重做**：只存参数快照，拖动不压栈、松手压栈，上限 50 步
-- **导出**：JPG / PNG / WebP，全分辨率、Worker + OffscreenCanvas 离线程渲染，保留 EXIF（含 RAW 元数据回写）、默认清除 GPS
-- **批量处理**：串行任务队列、进度反馈、可取消
+- **局部渐变**：线性 / 径向渐变滤镜，可调曝光、色温、色调——压暗天空、突出主体，蒙版参数随工程文件与撤销栈保存
+- **调色预设**：把整套调色（影调 / 曲线 / HSL / 分级 / 效果 / LUT 及强度）保存为命名预设，一键应用、删除管理；存于 userData，跨会话可用；配合批量处理即「按我的风格批量出图」
+- **白平衡吸管**：点取画面中的中性灰区域，自动推算并设置色温 / 色调
+- **LUT**：19 款内置 `.cube`（六大场景分类）+ 外部 `.cube` 导入，强度 0–100%；「我的 LUT」库支持命名、分类、持久化（存于 userData，重启仍在）；**调色导出为 LUT**：把当前曲线 / HSL / 颜色分级烘焙成 `.cube` 文件分享给他人（GPU 实测烘焙，与预览所见完全一致）
+- **预览**：缩放 / 平移 / 适配、按住查看原图、**分屏对比**（可拖动分割线，左右对照修改前后）、**剪裁警告**（高光溢出标红、阴影溢出标蓝的画面叠加蒙版 + 直方图溢出统计，快捷键 `J` 切换）
+- **撤销 / 重做**：只存参数快照，拖动不压栈、松手压栈，上限 50 步；**调整复制 / 粘贴**（`Ctrl+Alt+C` / `Ctrl+Alt+V`）：跨图片粘贴整套编辑参数
+- **图片会话条**：一次打开多张图片，底部缩略图条快速切换、移除，双击批量列表亦可加入
+
+### 输出与管理
+
+- **导出**：JPG / PNG / WebP，全分辨率、Worker + OffscreenCanvas 离线程渲染，保留 EXIF（含 RAW 元数据回写）、默认清除 GPS；**一键复制到剪贴板**（`Ctrl+Shift+C`，修完直接贴进微信 / 浏览器）；**长边快捷尺寸**（1080 / 2000 / 原图）
+- **批量处理**：串行任务队列、进度反馈、可取消（含水印合成阶段）
 - **工程文件**：`.lightedit` 保存 / 打开（参数 + 资源引用，非破坏性），旧工程向前兼容
+- **EXIF 查看面板**：顶栏「信息」打开模态，查看相机 / 镜头 / 曝光参数 / 拍摄时间 / GPS 等完整元数据
+- **最近打开**：文件菜单保留最近 10 张图片，一键重开
+- **会话恢复**：启动时自动恢复上次的图片与全部编辑参数（源文件已删除则静默跳过）
 - **水印**：整体复用 camera-watermark 编辑器（见第六节）
 - **检查更新**：electron-updater 语义化自动更新 + build 号手动下载双轨
 - **双语**：简体中文 / English 一键切换并持久化；原生菜单、系统对话框、更新提示同步双语
+
+### 下载
+
+- 安装版 **LumEdit-x.y.z-setup.exe**（NSIS，双击安装）
+- **便携版 LumEdit-x.y.z-portable.exe**（单文件免安装，适合 U 盘携带；便携版不提供应用内自动更新）
 
 ---
 
@@ -31,23 +48,24 @@ Electron + Vue 3 + Vite + TypeScript + Pinia + WebGL2，专注「RAW/JPEG 导入
 |---|---|
 | 桌面壳 | Electron（主进程 / preload / IPC，主进程 i18n） |
 | 前端 | Vue 3 + Vite + TypeScript |
-| 状态 | Pinia |
-| 色彩渲染 | WebGL2（3D LUT 纹理、曲线 LUT 烘焙） |
+| 状态 | Pinia（editor / batch / toast） |
+| 色彩渲染 | WebGL2（3D LUT 纹理、曲线 LUT 烘焙、纹理池化） |
 | RAW | 自研内嵌 JPEG 预览提取器（marker walk，无 libraw） |
 | EXIF | exifr |
 | LUT 解析 | 自研 `.cube` 解析器（仅 3D LUT，带尺寸上限防 DoS） |
 | 导出 | Web Worker + OffscreenCanvas |
-| 打包 | electron-builder（NSIS，Chromium 语言包裁剪到 zh-CN / en-US） |
+| 打包 | electron-builder（NSIS + Portable，Chromium 语言包裁剪到 zh-CN / en-US） |
 
 **管线顺序（不可调整）**：
 
 ```
 原图/RAW内嵌预览 → Orientation 校正（上传前 2D）→ Geometry 裁剪/旋转/翻转
-     → Adjust 基础调色 → Curve 曲线 → HSL → ColorGrade 分级 → Effects 效果
-     → LUT → Watermark 水印 → 输出
+     → Adjust 基础调色 → Curve 曲线 → HSL → ColorGrade 分级
+     → Gradation 局部渐变 → Effects 效果 → LUT → Watermark 水印 → 输出
 ```
 
-- Curve / HSL / ColorGrade / Effects 四个 Stage 由 `createEditStageBundle()` 统一组装，预览与导出共用，所见即所得；中性参数全部直通短路
+- Curve / HSL / ColorGrade / Gradation / Effects Stage 由 `createEditStageBundle()` 统一组装，预览与导出共用，所见即所得；中性参数全部直通短路
+- 中间纹理经纹理池复用（`texturePool.ts`），参数变化经 requestAnimationFrame 合帧，拖动滑块不逐帧分配显存
 - 预览最长边降采样到 2000px，导出走全分辨率
 - 仅支持 sRGB；Adobe RGB 近似矩阵转换
 - 进入裁剪模式时临时切到 Passthrough 显示原图，便于在原图上拖选裁剪框
@@ -61,20 +79,21 @@ npm install        # 安装依赖（Electron 下载慢可设 ELECTRON_MIRROR=htt
 npm run dev        # 启动 Vite 开发服（配合 Electron 主进程）
 npm run typecheck  # 仅类型检查（vue-tsc，strict，含 electron/ 目录）
 npm run build      # 类型检查 + 构建渲染层/主进程/preload
-npm run dist       # 构建并打包 Windows 安装包到 release/
+npm run dist       # 构建并打包 Windows 安装包 + 便携版到 release/
+npm run publish    # 把 release/ 资产发布到 GitHub Release（Node 跨平台脚本）
 ```
 
 ### 冒烟测试
 
 ```bash
-npm run smoke      # esbuild 打包测试 → 离屏 Electron(SwiftShader) 运行，输出 105 passed / 0 failed
+npm run smoke      # esbuild 打包测试 → 离屏 Electron(SwiftShader) 运行，输出 112+ passed / 0 failed
 ```
 
-覆盖：`.cube` 解析与防 DoS 边界、GPU 管线（几何/调色/曲线/HSL/分级/效果/LUT/直通/全串联）、
+覆盖：`.cube` 解析与防 DoS 边界、GPU 管线（几何/调色/曲线/HSL/分级/渐变/效果/LUT/直通/全串联）、
 RAW 扩展名与签名识别、合成 RAW 内嵌 JPEG 提取与 Electron 端到端解码、Orientation 8 转正、
 RAW EXIF → 水印工作室字段映射、EXIF 重写与三容器注入回读、撤销栈、工程文件序列化与向前兼容、
-中英文词典 key 对齐、文件访问授权策略、更新清单 URL 白名单等 105 项。
-测试在隐藏窗口 + SwiftShader 下离屏运行，无需人工。
+调色预设序列化、LUT 烘焙往返、中英文词典 key 对齐、文件访问授权策略、更新清单 URL 白名单、
+纹理池复用等。测试在隐藏窗口 + SwiftShader 下离屏运行，无需人工。
 
 > 离屏 WebGL2 需给 Electron 传 `--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader`（smoke-main.cjs 已内置）。
 
@@ -110,8 +129,8 @@ node scripts/gen-luts.mjs   # 重新生成全部 .cube 并更新 manifest，面�
 https://cdn.jsdelivr.net/gh/shiraijikuu/lumedit@main/update.json
 ```
 
-发布流程：打 tag → `npm run dist` → 把 `release/` 下安装包与 `latest.yml` 上传到 GitHub Release
-（`npm run publish`）→ 更新仓库根目录 `update.json`。
+发布流程：打 tag → `npm run dist` → `npm run publish`（自动创建 Release、上传安装包 / blockmap /
+latest.yml，正文取自 `release-notes.md`）→ 更新仓库根目录 `update.json`。
 
 ---
 
@@ -146,6 +165,9 @@ https://cdn.jsdelivr.net/gh/shiraijikuu/lumedit@main/update.json
 | Ctrl + Shift + O | 打开工程 |
 | Ctrl + E | 导出 |
 | Ctrl + Z / Ctrl + Y | 撤销 / 重做 |
+| Ctrl + Alt + C / Ctrl + Alt + V | 复制 / 粘贴调整 |
+| Ctrl + Shift + C | 复制到剪贴板 |
+| J | 剪裁警告开关 |
 | `\`（按住） | 查看原图 |
 | `0` | 适配窗口 |
 | `+` / `-` | 缩放 |
@@ -157,15 +179,16 @@ https://cdn.jsdelivr.net/gh/shiraijikuu/lumedit@main/update.json
 
 ```
 lumedit/
-├─ electron/            主进程、preload（IPC 白名单、菜单、自动更新、主进程 i18n）
+├─ .github/workflows/  CI（push/PR 自动 typecheck + 冒烟测试）
+├─ electron/            主进程、preload（IPC 白名单、菜单、自动更新、主进程 i18n、预设/会话/最近打开存储）
 ├─ src/
 │  ├─ assets/luts/      19 款内置 .cube + manifest
 │  ├─ assets/watermark-templates/  内置水印模板 JSON
 │  ├─ components/       Vue 组件（画布、顶栏、右侧面板、关于弹窗、UI 控件）
 │  │  ├─ color/         曲线编辑器、直方图
-│  │  └─ panels/color/  曲线 / HSL / 分级 / 效果面板
+│  │  └─ panels/color/  曲线 / HSL / 分级 / 效果 / 渐变面板
 │  ├─ core/
-│  │  ├─ render/        WebGL2：ImageRenderer、BlitProgram、Pipeline、各 Stage、曲线 LUT 烘焙
+│  │  ├─ render/        WebGL2：ImageRenderer、BlitProgram、Pipeline、各 Stage、纹理池、曲线 LUT 烘焙
 │  │  ├─ lut/           .cube 解析与 LutManager
 │  │  ├─ image/         导入、RAW 内嵌预览提取、EXIF、Orientation、降采样
 │  │  ├─ metadata/      EXIF 重写与三容器注入
@@ -176,10 +199,11 @@ lumedit/
 │  │  ├─ plugin/        插件接口 + watermark-engine
 │  │  └─ update/        更新检查（下载地址白名单）
 │  ├─ i18n/             渲染层词典（zh-CN / en）
-│  ├─ stores/           Pinia editor store
+│  ├─ stores/           Pinia（editor / batch / toast / presets）
 │  └─ types/            EditParams 类型契约
-├─ scripts/             LUT 生成、RAW 提取实验与校验、双档打包、Release 发布脚本
-└─ test/smoke/          105 项冒烟测试
+├─ scripts/             LUT 生成、RAW 校验、打包、publish.mjs（Release 发布）、dev-shot.ps1（截图）
+├─ docs/screenshots/    README 界面截图
+└─ test/smoke/          冒烟测试
 ```
 
 ---

@@ -47,7 +47,7 @@ async function writeUserLutLib(lib: UserLutRecord[]): Promise<void> {
 }
 
 // 单调递增构建号：同版本内容修订时 +1（渲染层远程比对用）
-const APP_BUILD = 4;
+const APP_BUILD = 5;
 // 远程更新清单（jsdelivr 镜像 GitHub，防缓存参数由调用方追加）
 const REMOTE_UPDATE_URL =
   'https://cdn.jsdelivr.net/gh/shiraijikuu/lumedit@main/update.json';
