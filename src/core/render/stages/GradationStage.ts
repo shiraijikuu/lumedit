@@ -24,9 +24,8 @@ precision highp float;
 in vec2 vTexCoord;
 out vec4 outColor;
 uniform sampler2D uSource;
-uniform vec2 uCenter;   // 蒙版中心（UV，左下原点）
-uniform vec2 uHalf;     // 半宽/半高
-uniform vec2 uCosSin;   // 逆旋转
+uniform vec2 uP1;       // 线段起点（UV，左下原点）：linear=渐变起点，radial=圆心
+uniform vec2 uP2;       // 线段终点：linear=渐变终点（全量侧），radial=蒙版边缘点
 uniform float uType;    // 0 = linear, 1 = radial
 uniform float uExposure;
 uniform float uTemperature;
@@ -35,16 +34,16 @@ uniform float uTint;
 void main() {
   vec4 src = texture(uSource, vTexCoord);
   vec3 c = src.rgb;
-  vec2 d = vTexCoord - uCenter;
-  vec2 p = vec2(uCosSin.x * d.x + uCosSin.y * d.y, -uCosSin.y * d.x + uCosSin.x * d.y);
-  vec2 q = p / max(uHalf, vec2(1e-4)) + 0.5;
+  vec2 dir = uP2 - uP1;
+  float len2 = max(dot(dir, dir), 1e-6);
+  float t = dot(vTexCoord - uP1, dir) / len2;
   float mask;
   if (uType < 0.5) {
-    // 线性：只沿箭头方向 0→1 渐变，垂直方向无限延伸（PS 语义，整行/列都能拉满）
-    mask = clamp(q.x, 0.0, 1.0);
+    // 线性：沿线段 0→1 投影渐变，两端之外钳制，垂直方向无限延伸（PS/darktable 语义）
+    mask = clamp(t, 0.0, 1.0);
   } else {
-    // 径向：中心全量，椭圆边界衰减到 0
-    mask = 1.0 - smoothstep(0.55, 1.0, length(q - 0.5) / 0.5);
+    // 径向：圆心全量，到边缘点距离处衰减到 0
+    mask = 1.0 - smoothstep(0.55, 1.0, length(vTexCoord - uP1) / sqrt(len2));
   }
   vec3 a = c * exp2(uExposure);
   a.r += uTemperature * 0.06 * (1.0 - a.r * 0.5);
@@ -75,9 +74,8 @@ export class GradationStage implements RenderStage {
     this.fbo = attachTextureToFBO(gl, createRGBA8Texture(gl, 1, 1));
     this.loc = {
       uSource: this.bundle.uniform('uSource'),
-      uCenter: this.bundle.uniform('uCenter'),
-      uHalf: this.bundle.uniform('uHalf'),
-      uCosSin: this.bundle.uniform('uCosSin'),
+      uP1: this.bundle.uniform('uP1'),
+      uP2: this.bundle.uniform('uP2'),
       uType: this.bundle.uniform('uType'),
       uExposure: this.bundle.uniform('uExposure'),
       uTemperature: this.bundle.uniform('uTemperature'),
@@ -92,10 +90,6 @@ export class GradationStage implements RenderStage {
     this.ensure(gl);
 
     // 参数 y 以顶部为原点 → 纹理 UV 左下原点
-    const cx = g.x + g.w / 2;
-    const cy = 1 - (g.y + g.h / 2);
-    const rad = (-g.rotation * Math.PI) / 180; // 逆变换用反向角
-
     const dst = acquireTarget(ctx, ctx.width, ctx.height);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, dst, 0);
@@ -110,9 +104,8 @@ export class GradationStage implements RenderStage {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, input);
     gl.uniform1i(this.loc.uSource, 0);
-    gl.uniform2f(this.loc.uCenter, cx, cy);
-    gl.uniform2f(this.loc.uHalf, Math.max(1e-4, g.w / 2), Math.max(1e-4, g.h / 2));
-    gl.uniform2f(this.loc.uCosSin, Math.cos(rad), Math.sin(rad));
+    gl.uniform2f(this.loc.uP1, g.x1, 1 - g.y1);
+    gl.uniform2f(this.loc.uP2, g.x2, 1 - g.y2);
     gl.uniform1f(this.loc.uType, g.type === 'radial' ? 1 : 0);
     gl.uniform1f(this.loc.uExposure, g.exposure);
     gl.uniform1f(this.loc.uTemperature, g.temperature);

@@ -123,15 +123,14 @@ export interface WatermarkParams {
 
 export interface GradationParams {
   enabled: boolean;
-  /** linear=线性渐变，radial=径向 */
+  /** linear=线性渐变（沿线段 0→1，垂直方向无限延伸），radial=径向（圆心→边缘） */
   type: 'linear' | 'radial';
-  /** 归一化矩形（y 以画面顶部为原点） */
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  /** 旋转角度（度，顺时针） */
-  rotation: number;
+  /** 线段/圆心端点（归一化，y 以画面顶部为原点）：linear 为渐变起点（无效果侧），radial 为圆心 */
+  x1: number;
+  y1: number;
+  /** linear 为渐变终点（全效果侧，箭头端），radial 为蒙版边缘上的点 */
+  x2: number;
+  y2: number;
   /** 渐变内曝光（EV） */
   exposure: number;
   /** 渐变内色温 */
@@ -217,11 +216,10 @@ export const defaultEditParams: EditParams = {
   gradation: {
     enabled: false,
     type: 'linear',
-    x: 0.2,
-    y: 0.2,
-    w: 0.6,
-    h: 0.6,
-    rotation: 0,
+    x1: 0.15,
+    y1: 0.5,
+    x2: 0.85,
+    y2: 0.5,
     exposure: 0,
     temperature: 0,
     tint: 0,
@@ -263,9 +261,28 @@ export function ensureParams(p: Partial<EditParams> | null | undefined): EditPar
   }
   if (p.effects) Object.assign(out.effects, p.effects);
   if (p.gradation) {
-    Object.assign(out.gradation, p.gradation);
-    out.gradation.w = Math.min(3, Math.max(0.05, out.gradation.w));
-    out.gradation.h = Math.min(3, Math.max(0.05, out.gradation.h));
+    const gp = p.gradation as Partial<GradationParams> & { x?: number; y?: number; w?: number; h?: number; rotation?: number };
+    if (typeof gp.w === 'number') {
+      // 旧版（中心 + 宽高 + 旋转）→ 线段两端
+      const cx = (gp.x ?? 0.2) + gp.w / 2;
+      const cy = (gp.y ?? 0.2) + (gp.h ?? 0.6) / 2;
+      const th = ((gp.rotation ?? 0) * Math.PI) / 180;
+      const half = gp.w / 2;
+      out.gradation.x1 = cx - Math.cos(th) * half;
+      out.gradation.y1 = cy - Math.sin(th) * half;
+      out.gradation.x2 = cx + Math.cos(th) * half;
+      out.gradation.y2 = cy + Math.sin(th) * half;
+    } else {
+      out.gradation.x1 = Math.min(1.5, Math.max(-0.5, gp.x1 ?? out.gradation.x1));
+      out.gradation.y1 = Math.min(1.5, Math.max(-0.5, gp.y1 ?? out.gradation.y1));
+      out.gradation.x2 = Math.min(1.5, Math.max(-0.5, gp.x2 ?? out.gradation.x2));
+      out.gradation.y2 = Math.min(1.5, Math.max(-0.5, gp.y2 ?? out.gradation.y2));
+    }
+    out.gradation.enabled = !!gp.enabled;
+    out.gradation.type = gp.type === 'radial' ? 'radial' : 'linear';
+    out.gradation.exposure = gp.exposure ?? 0;
+    out.gradation.temperature = gp.temperature ?? 0;
+    out.gradation.tint = gp.tint ?? 0;
   }
   if (p.lut) Object.assign(out.lut, p.lut);
   if (p.watermark) out.watermark = p.watermark;

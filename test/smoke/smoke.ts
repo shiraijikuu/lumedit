@@ -710,14 +710,14 @@ async function testGradation(): Promise<void> {
   const passthrough = stage.execute(input, p0, ctx0);
   ok('未启用直通（返回输入纹理）', passthrough === input);
 
-  // 启用 + 曝光 +2：中心（蒙版内部）应变亮，角落（蒙版外）保持 0.5
+  // 启用 + 曝光 +2：圆心（蒙版内部）应变亮，角落（蒙版外）保持 0.5
   const p1 = params();
   p1.gradation.enabled = true;
   p1.gradation.type = 'radial';
-  p1.gradation.x = 0.25;
-  p1.gradation.y = 0.25;
-  p1.gradation.w = 0.5;
-  p1.gradation.h = 0.5;
+  p1.gradation.x1 = 0.5;
+  p1.gradation.y1 = 0.5;
+  p1.gradation.x2 = 0.75;
+  p1.gradation.y2 = 0.5;
   p1.gradation.exposure = 2;
   const ctx1: RenderContext = { gl, width: 32, height: 32 };
   const out = stage.execute(input, p1, ctx1);
@@ -734,14 +734,14 @@ async function testGradation(): Promise<void> {
   gl.deleteFramebuffer(fbo);
   ok('蒙版外角落不受影响（<160）', corner[0] < 160, `corner=${corner[0]}`);
 
-  // 线性渐变的垂直远端也应生效（PS 语义：垂直方向无限延伸）
+  // 线性渐变：起点(0.15,0.5)→终点(0.85,0.5)，垂直方向无限延伸（PS 语义）
   const p2 = params();
   p2.gradation.enabled = true;
   p2.gradation.type = 'linear';
-  p2.gradation.x = 0.25;
-  p2.gradation.y = 0.25;
-  p2.gradation.w = 0.5;
-  p2.gradation.h = 0.5;
+  p2.gradation.x1 = 0.15;
+  p2.gradation.y1 = 0.5;
+  p2.gradation.x2 = 0.85;
+  p2.gradation.y2 = 0.5;
   p2.gradation.exposure = 2;
   const ctx2: RenderContext = { gl, width: 32, height: 32 };
   const out2 = stage.execute(input, p2, ctx2);
@@ -751,8 +751,8 @@ async function testGradation(): Promise<void> {
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, out2, 0);
   const near = new Uint8Array(4);
   const far = new Uint8Array(4);
-  gl.readPixels(24, 1, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, near);
-  gl.readPixels(24, 30, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, far);
+  gl.readPixels(26, 1, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, near);
+  gl.readPixels(26, 30, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, far);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.deleteFramebuffer(fbo2);
   ok('线性渐变垂直近端生效', near[0] > 200, `near=${near[0]}`);

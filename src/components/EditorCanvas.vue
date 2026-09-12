@@ -54,21 +54,19 @@
         @pointerdown.stop="gradMoveStart($event)"
       >
         <template v-if="!gradOverlay.radial">
-          <line :x1="gradOverlay.x1" :y1="gradOverlay.y1" :x2="gradOverlay.cx" :y2="gradOverlay.cy" class="grad-line grad-line-dim" />
-          <line :x1="gradOverlay.cx" :y1="gradOverlay.cy" :x2="gradOverlay.x2" :y2="gradOverlay.y2" class="grad-line" />
+          <line :x1="gradOverlay.x1" :y1="gradOverlay.y1" :x2="gradOverlay.x2" :y2="gradOverlay.y2" class="grad-line" />
           <polygon :points="gradArrow" class="grad-arrow" />
         </template>
         <ellipse
           v-else
-          :cx="gradOverlay.cx"
-          :cy="gradOverlay.cy"
-          :rx="gradOverlay.rw"
-          :ry="gradOverlay.rh"
-          :transform="`rotate(${store.params.gradation.rotation} ${gradOverlay.cx} ${gradOverlay.cy})`"
+          :cx="gradOverlay.x1"
+          :cy="gradOverlay.y1"
+          :rx="gradOverlay.r"
+          :ry="gradOverlay.r"
           class="grad-ellipse"
         />
-        <span class="grad-handle" :style="{ left: gradOverlay.x1 + '%', top: gradOverlay.y1 + '%' }" @pointerdown.stop="gradEndStart('start', $event)"></span>
-        <span class="grad-handle" :style="{ left: gradOverlay.x2 + '%', top: gradOverlay.y2 + '%' }" @pointerdown.stop="gradEndStart('end', $event)"></span>
+        <span class="grad-handle" :style="{ left: gradOverlay.x1 + '%', top: gradOverlay.y1 + '%' }" @pointerdown.stop="gradEndStart('p1', $event)"></span>
+        <span class="grad-handle" :style="{ left: gradOverlay.x2 + '%', top: gradOverlay.y2 + '%' }" @pointerdown.stop="gradEndStart('p2', $event)"></span>
       </svg>
 
       <!-- 剪裁警告蒙版（高光红 / 阴影蓝） -->
@@ -228,19 +226,13 @@ function feedLut(): void {
 const gradOverlay = computed(() => {
   const g = store.params.gradation;
   if (!g.enabled || isCrop.value) return null;
-  const th = (g.rotation * Math.PI) / 180;
-  const cx = (g.x + g.w / 2) * 100;
-  const cy = (g.y + g.h / 2) * 100;
-  const dx = Math.cos(th) * (g.w / 2) * 100;
-  const dy = Math.sin(th) * (g.h / 2) * 100;
   return {
-    x1: cx - dx, y1: cy - dy,
-    x2: cx + dx, y2: cy + dy,
-    cx, cy,
+    x1: g.x1 * 100,
+    y1: g.y1 * 100,
+    x2: g.x2 * 100,
+    y2: g.y2 * 100,
     radial: g.type === 'radial',
-    rw: (g.w / 2) * 100,
-    rh: (g.h / 2) * 100,
-    rotation: g.rotation,
+    r: Math.hypot(g.x2 - g.x1, g.y2 - g.y1) * 100,
   };
 });
 
@@ -256,36 +248,41 @@ const gradArrow = computed(() => {
   return `${o.x2},${o.y2} ${p1} ${p2}`;
 });
 
-/** 拖动状态：记录按下时的指针比例坐标与参数原值（参照 camera-watermark 的水印拖拽模式） */
+/**
+ * 拖动状态：记录按下时的指针比例坐标与两端点原值。
+ * 端点拖拽 = 端点直接跟随指针（天然对称，向哪个方向都能拖到边界）。
+ */
 let gradDrag: {
-  mode: 'move' | 'start' | 'end';
+  mode: 'move' | 'p1' | 'p2';
   fx: number;
   fy: number;
-  ox: number;
-  oy: number;
-  cx: number;
-  cy: number;
+  ox1: number;
+  oy1: number;
+  ox2: number;
+  oy2: number;
 } | null = null;
+
+function gradClamp(v: number): number {
+  return Math.min(1.5, Math.max(-0.5, v));
+}
 
 function gradDragMove(e: PointerEvent): void {
   if (!gradDrag) return;
   const p = stageNorm(e);
   const g = store.params.gradation;
+  const dx = p.x - gradDrag.fx;
+  const dy = p.y - gradDrag.fy;
   if (gradDrag.mode === 'move') {
-    // 平移：中心始终留在画面内
-    g.x = Math.min(1, Math.max(0, gradDrag.ox + (p.x - gradDrag.fx)));
-    g.y = Math.min(1, Math.max(0, gradDrag.oy + (p.y - gradDrag.fy)));
+    g.x1 = gradClamp(gradDrag.ox1 + dx);
+    g.y1 = gradClamp(gradDrag.oy1 + dy);
+    g.x2 = gradClamp(gradDrag.ox2 + dx);
+    g.y2 = gradClamp(gradDrag.oy2 + dy);
+  } else if (gradDrag.mode === 'p1') {
+    g.x1 = gradClamp(p.x);
+    g.y1 = gradClamp(p.y);
   } else {
-    // 端点：旋转 + 调整范围；手柄始终跟随指针（限制在画面内 75% 半径）
-    const dx = p.x - gradDrag.cx;
-    const dy = p.y - gradDrag.cy;
-    let ang = (Math.atan2(dy, dx) * 180) / Math.PI;
-    if (gradDrag.mode === 'start') ang += 180;
-    g.rotation = ((ang + 180) % 360 + 360) % 360 - 180;
-    const rad = (g.rotation * Math.PI) / 180;
-    const half = Math.min(1.5, Math.max(0.025, Math.abs(dx * Math.cos(rad) + dy * Math.sin(rad))));
-    g.w = half * 2;
-    if (g.type === 'radial') g.h = g.w;
+    g.x2 = gradClamp(p.x);
+    g.y2 = gradClamp(p.y);
   }
 }
 
@@ -295,34 +292,33 @@ function gradDragUp(): void {
   store.endScrub();
 }
 
-/** 拖动整条线：平移蒙版 */
+/** 拖动整条线：平移两端点 */
 function gradMoveStart(e: PointerEvent): void {
   const p = stageNorm(e);
   gradDrag = {
     mode: 'move',
     fx: p.x,
     fy: p.y,
-    ox: store.params.gradation.x,
-    oy: store.params.gradation.y,
-    cx: 0,
-    cy: 0,
+    ox1: store.params.gradation.x1,
+    oy1: store.params.gradation.y1,
+    ox2: store.params.gradation.x2,
+    oy2: store.params.gradation.y2,
   };
   store.mutate(() => {}, true);
   (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
 }
 
-/** 拖动两端圆点：旋转 + 调整范围（径向模式下同步宽高） */
-function gradEndStart(which: 'start' | 'end', e: PointerEvent): void {
-  const g = store.params.gradation;
+/** 拖动端点：该端点直接跟随指针 */
+function gradEndStart(which: 'p1' | 'p2', e: PointerEvent): void {
   const p = stageNorm(e);
   gradDrag = {
     mode: which,
     fx: p.x,
     fy: p.y,
-    ox: g.x,
-    oy: g.y,
-    cx: g.x + g.w / 2,
-    cy: g.y + g.h / 2,
+    ox1: store.params.gradation.x1,
+    oy1: store.params.gradation.y1,
+    ox2: store.params.gradation.x2,
+    oy2: store.params.gradation.y2,
   };
   store.mutate(() => {}, true);
   (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
