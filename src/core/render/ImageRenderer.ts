@@ -3,7 +3,7 @@ import type { EditParams } from '@/types/EditParams';
 import { cloneParams, defaultEditParams } from '@/types/EditParams';
 import { BlitProgram } from './BlitProgram';
 import { runPipeline } from './renderPipeline';
-import { bitmapToTextureSource } from './gpuUtils';
+import { attachTextureToFBO, bitmapToTextureSource } from './gpuUtils';
 import { TexturePool, releaseTarget } from './texturePool';
 
 export class ImageRenderer {
@@ -230,6 +230,64 @@ export class ImageRenderer {
     const tex = this.currentTexture ?? this.inputTexture;
     if (!tex) return;
     this.drawToScreen(tex);
+  }
+
+  /**
+   * 白平衡吸管：画布 CSS 坐标 → 当前输出纹理 5×5 均值取样（0-255）。
+   * 复用 drawToScreen 的 contain 映射求 UV；WebGL 原点在左下，Y 需翻转。
+   */
+  pickColor(cssX: number, cssY: number): { r: number; g: number; b: number } | null {
+    const gl = this.gl;
+    const tex = this.currentTexture ?? this.inputTexture;
+    if (!gl || !tex || !this.currentTexture) return null;
+
+    const dpr = window.devicePixelRatio || 1;
+    const px = cssX * dpr;
+    const py = cssY * dpr;
+    const imgAspect = this.context.width / this.context.height;
+    const canvasAspect = this.canvas.width / this.canvas.height;
+    let dw = this.canvas.width;
+    let dh = this.canvas.height;
+    if (imgAspect > canvasAspect) {
+      dh = this.canvas.width / imgAspect;
+    } else {
+      dw = this.canvas.height * imgAspect;
+    }
+    const ox = (this.canvas.width - dw) / 2;
+    const oy = (this.canvas.height - dh) / 2;
+    const u = (px - ox) / dw;
+    const vf = (py - oy) / dh;
+    if (u < 0 || u > 1 || vf < 0 || vf > 1) return null;
+    const v = 1 - vf;
+
+    const W = this.context.width;
+    const H = this.context.height;
+    const size = Math.min(5, W, H);
+    if (size <= 0) return null;
+    const sx = Math.max(0, Math.min(W - size, Math.round(u * W) - (size >> 1)));
+    const sy = Math.max(0, Math.min(H - size, Math.round(v * H) - (size >> 1)));
+
+    let fbo: WebGLFramebuffer | null = null;
+    try {
+      fbo = attachTextureToFBO(gl, tex);
+      // attachTextureToFBO 返回前会解绑，读像素前重新绑定
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      const pixels = new Uint8Array(size * size * 4);
+      gl.readPixels(sx, sy, size, size, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      let r = 0, g = 0, b = 0;
+      const n = size * size;
+      for (let i = 0; i < n; i++) {
+        r += pixels[i * 4];
+        g += pixels[i * 4 + 1];
+        b += pixels[i * 4 + 2];
+      }
+      return { r: r / n, g: g / n, b: b / n };
+    } catch {
+      return null;
+    } finally {
+      if (fbo) gl.deleteFramebuffer(fbo);
+    }
   }
 
   private drawToScreen(texture: WebGLTexture): void {

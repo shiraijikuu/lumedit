@@ -2,7 +2,7 @@
   <div
     ref="vpRef"
     class="canvas-viewport checkerboard"
-    :class="{ grabbing: panning }"
+    :class="{ grabbing: panning, picking: store.pickerActive }"
     @wheel.prevent="onWheel"
     @pointerdown="onViewportPointerDown"
     @dblclick="store.resetView()"
@@ -45,6 +45,9 @@
 
     <!-- 原图对比提示 -->
     <div v-if="store.showOriginal && store.hasImage" class="compare-badge glass">{{ t('canvas.original') }}</div>
+
+    <!-- 白平衡吸管提示 -->
+    <div v-if="store.pickerActive && store.hasImage" class="compare-badge glass">{{ t('canvas.pickerTip') }}</div>
 
     <!-- 空状态 -->
     <div v-if="!store.hasImage" class="empty-state">
@@ -194,7 +197,24 @@ function onWheel(e: WheelEvent): void {
 }
 
 function onViewportPointerDown(e: PointerEvent): void {
-  if (isCrop.value || e.button === 2) return;
+  if (e.button === 2) return;
+  // 白平衡吸管：点击取样，不触发平移
+  if (store.pickerActive) {
+    if (isCrop.value) {
+      store.cancelPicker();
+      return;
+    }
+    const canvas = canvasRef.value;
+    if (canvas && renderer) {
+      const rect = canvas.getBoundingClientRect();
+      const scale = store.view.scale || 1;
+      // rect 含舞台 CSS transform scale，换回布局坐标再映射纹理
+      const c = renderer.pickColor((e.clientX - rect.left) / scale, (e.clientY - rect.top) / scale);
+      if (c) store.applyWhiteBalance(c.r, c.g, c.b);
+    }
+    return;
+  }
+  if (isCrop.value) return;
   const vp = vpRef.value;
   if (!vp) return;
   const startX = e.clientX;
@@ -339,6 +359,10 @@ function cancelCrop(): void {
 
 // ---------- 生命周期 / watch ----------
 function onKey(e: KeyboardEvent): void {
+  if (store.pickerActive && e.key === 'Escape') {
+    store.cancelPicker();
+    return;
+  }
   if (!isCrop.value) return;
   if (e.key === 'Escape') cancelCrop();
   if (e.key === 'Enter') applyCrop();
@@ -483,6 +507,9 @@ watch(
 }
 .canvas-viewport.grabbing {
   cursor: grabbing;
+}
+.canvas-viewport.picking {
+  cursor: crosshair;
 }
 .stage {
   position: absolute;

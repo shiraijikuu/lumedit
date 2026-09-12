@@ -1,5 +1,31 @@
 <template>
   <div class="color-panel">
+    <CollapseSection :default-open="false">
+      <template #title>{{ t('preset.title') }}</template>
+      <template #actions>
+        <button type="button" class="ghost mini" :disabled="saveName.trim() === '' || !store.hasImage" @click="savePreset">
+          {{ t('preset.save') }}
+        </button>
+      </template>
+      <div class="preset-save">
+        <input
+          v-model="saveName"
+          class="preset-input"
+          :placeholder="t('preset.namePlaceholder')"
+          maxlength="40"
+          @keydown.enter="savePreset"
+        />
+      </div>
+      <div v-if="!presetStore.list.length" class="preset-empty">{{ t('preset.empty') }}</div>
+      <div v-for="p in presetStore.list" :key="p.id" class="preset-row">
+        <button type="button" class="preset-apply" :title="t('preset.applyTip')" @click="store.applyPreset(p.name, p.params)">
+          {{ p.name }}
+        </button>
+        <button type="button" class="ghost mini" @click="presetStore.remove(p.id)">×</button>
+      </div>
+      <p class="preset-hint">{{ t('preset.hint') }}</p>
+    </CollapseSection>
+
     <CollapseSection>
       <template #title>
         {{ t('adjust.tone') }}
@@ -56,8 +82,10 @@
 </template>
 
 <script setup lang="ts">
-import { defaultEditParams, linearCurve } from '@/types/EditParams';
+import { ref } from 'vue';
+import { defaultEditParams, linearCurve, pickPresetParams } from '@/types/EditParams';
 import { useEditorStore } from '@/stores/editor';
+import { usePresetStore } from '@/stores/presets';
 import { t } from '@/i18n';
 import CollapseSection from '../ui/CollapseSection.vue';
 import ToneSection from './color/ToneSection.vue';
@@ -67,6 +95,18 @@ import GradeSection from './color/GradeSection.vue';
 import EffectsSection from './color/EffectsSection.vue';
 
 const store = useEditorStore();
+const presetStore = usePresetStore();
+const saveName = ref('');
+
+function savePreset(): void {
+  const name = saveName.value.trim();
+  if (!name || !store.hasImage) return;
+  void presetStore.save(name, pickPresetParams(store.params)).then((ok) => {
+    if (ok) saveName.value = '';
+  });
+}
+
+void presetStore.load();
 
 function resetCurve(): void {
   store.mutate((p) => {
@@ -114,6 +154,58 @@ button.mini {
 }
 .hint {
   padding: 10px 16px 4px;
+  font-size: 11px;
+  color: var(--txt-2);
+  line-height: 1.5;
+}
+
+.preset-save {
+  margin-bottom: 8px;
+}
+.preset-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 9px;
+  border-radius: 7px;
+  border: 1px solid var(--bg-3);
+  background: var(--bg-2);
+  color: var(--txt-1);
+  font-size: 12px;
+  outline: none;
+}
+.preset-input:focus {
+  border-color: var(--accent);
+}
+.preset-empty {
+  text-align: center;
+  color: var(--txt-2);
+  font-size: 11.5px;
+  padding: 10px 0;
+}
+.preset-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+}
+.preset-apply {
+  flex: 1;
+  text-align: left;
+  padding: 6px 9px;
+  border-radius: 7px;
+  background: var(--bg-2);
+  color: var(--txt-1);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.preset-apply:hover {
+  background: var(--bg-3);
+  color: var(--accent);
+}
+.preset-hint {
+  margin-top: 8px;
   font-size: 11px;
   color: var(--txt-2);
   line-height: 1.5;

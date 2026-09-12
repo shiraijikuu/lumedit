@@ -25,6 +25,10 @@ export default {
     label: '语言',
   },
   topbar: {
+    copyEdits: '复制',
+    pasteEdits: '粘贴',
+    copyEditsTitle: '复制当前调整（Ctrl+Alt+C）',
+    pasteEditsTitle: '粘贴调整（Ctrl+Alt+V）',
     brandSub: '光影轻修',
     openImage: '打开图片',
     openProject: '打开工程',
@@ -55,6 +59,7 @@ export default {
     resetAll: '重置全部几何',
   },
   canvas: {
+    pickerTip: '吸管：点击画面中的中性灰区域（Esc 取消）',
     cropTip: '在图上拖出裁剪框，手柄微调',
     cancelCrop: '取消 · Esc',
     applyCrop: '应用 · Enter',
@@ -65,6 +70,8 @@ export default {
     webglFail: '当前环境不支持 WebGL2，无法启动渲染',
   },
   adjust: {
+    picker: '吸管',
+    pickerTitle: '白平衡吸管：点击画面中的中性灰（白墙/灰卡）区域自动校正色温',
     tone: '基础影调',
     wb: '白平衡',
     light: '光效',
@@ -128,6 +135,8 @@ export default {
     untitled: '未命名 LUT',
   },
   exportPanel: {
+    clipboardBtn: '复制到剪贴板',
+    clipboardDone: '已复制到剪贴板，可直接粘贴使用',
     format: '格式',
     quality: '质量',
     outputSize: '输出尺寸',
@@ -174,7 +183,24 @@ export default {
     license: 'MIT License',
     done: '完成',
   },
+  preset: {
+    title: '预设',
+    save: '保存当前',
+    namePlaceholder: '预设名称…',
+    empty: '还没有保存的预设',
+    hint: '保存整套调色（含 LUT），点击应用；双击滑块数值可复位单项',
+    applyTip: '点击应用此预设',
+    saved: '预设「{v}」已保存',
+    removed: '预设已删除',
+    applied: '已应用预设「{v}」',
+  },
+  editCopy: {
+    copied: '已复制当前调整',
+    none: '还没有复制过调整，请先在图片上复制',
+    pastedName: '粘贴的调整',
+  },
   msg: {
+    presetFail: '预设操作失败：{v}',
     lutBuiltinFail: '内置 LUT 加载失败：{v}',
     lutFileFail: 'LUT 文件无法加载：\n{v}',
     lutRemoved: '该 LUT 已从库中移除',

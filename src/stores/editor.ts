@@ -5,6 +5,8 @@ import {
   cloneParams,
   defaultEditParams,
   ensureParams,
+  pickPresetParams,
+  type PresetColorParams,
 } from '@/types/EditParams';
 import {
   canRedo as canRedoStack,
@@ -261,6 +263,77 @@ export const useEditorStore = defineStore('editor', () => {
     } catch {
       userLuts.value = [];
     }
+  }
+
+  /** 应用调色预设：saveSnapshot 后整体替换颜色分组，LUT 数据按参数重载 */
+  async function applyPreset(name: string, preset: PresetColorParams): Promise<void> {
+    if (!hasImage.value) {
+      toast('info', t('msg.openImageFirst'));
+      return;
+    }
+    try {
+      saveSnapshot();
+      const p = ensureParams(preset as Partial<EditParams>);
+      params.adjust = p.adjust;
+      params.curve = p.curve;
+      params.hsl = p.hsl;
+      params.colorGrade = p.colorGrade;
+      params.effects = p.effects;
+      params.lut = p.lut;
+      // LUT 数据恢复：内置 / 用户库走 syncLutFromParams；外部文件按路径重读
+      // （跨会话时文件未授权会被 readBuffer 拒绝 → 降级清空并提示，与工程文件行为一致）
+      const lut = params.lut;
+      if ((lut.isBuiltin && lut.id) || lut.path?.startsWith(USER_LUT_PREFIX)) {
+        externalLut.value = null;
+        await syncLutFromParams();
+      } else if (lut.path) {
+        try {
+          const buf = await window.api.readBuffer(lut.path);
+          const data = cubeToLutData(parseCube(new TextDecoder().decode(buf)));
+          const shortName = lut.path.replace(/\\/g, '/').split('/').pop() ?? 'LUT';
+          externalLut.value = { name: shortName, path: lut.path, data };
+          lutData.value = data;
+          lutVersion.value++;
+        } catch {
+          toast('error', t('msg.extLutLost', { v: lut.path }));
+          params.lut.id = null;
+          params.lut.path = null;
+          params.lut.isBuiltin = false;
+          params.lut.strength = 0;
+          externalLut.value = null;
+          lutData.value = null;
+          lutVersion.value++;
+        }
+      }
+      scheduleWmPreview();
+      toast('success', t('preset.applied', { v: name }));
+    } catch (err) {
+      toast('error', t('msg.presetFail', { v: err instanceof Error ? err.message : String(err) }));
+    }
+  }
+
+  // ---------- 调整复制 / 粘贴（跨图片，模块级暂存不持久化） ----------
+  let copiedEdits: PresetColorParams | null = null;
+
+  function copyEdits(): void {
+    if (!hasImage.value) {
+      toast('info', t('msg.openImageFirst'));
+      return;
+    }
+    copiedEdits = pickPresetParams(params);
+    toast('success', t('editCopy.copied'));
+  }
+
+  function pasteEdits(): void {
+    if (!hasImage.value) {
+      toast('info', t('msg.openImageFirst'));
+      return;
+    }
+    if (!copiedEdits) {
+      toast('info', t('editCopy.none'));
+      return;
+    }
+    void applyPreset(t('editCopy.pastedName'), copiedEdits);
   }
 
   async function importUserLuts(): Promise<void> {
@@ -520,6 +593,28 @@ export const useEditorStore = defineStore('editor', () => {
   });
   const exporting = ref(false);
 
+  // ---------- 白平衡吸管 ----------
+  const pickerActive = ref(false);
+  function togglePicker(): void {
+    if (!hasImage.value) return;
+    pickerActive.value = !pickerActive.value;
+  }
+  function cancelPicker(): void {
+    pickerActive.value = false;
+  }
+  /** 吸管取样输出像素（0-255）。按 AdjustStage 白平衡公式反解温/色调增量并叠加到当前值 */
+  function applyWhiteBalance(r: number, g: number, b: number): void {
+    const rn = r / 255, gn = g / 255, bn = b / 255;
+    const denom = 0.06 * (2 - 0.5 * (rn + bn));
+    const dTemp = denom > 1e-4 ? (bn - rn) / denom : 0;
+    const dTint = (gn - (rn + bn) / 2) / 0.05;
+    mutate((p) => {
+      p.adjust.temperature = Math.min(1, Math.max(-1, p.adjust.temperature + dTemp));
+      p.adjust.tint = Math.min(1, Math.max(-1, p.adjust.tint + dTint));
+    });
+    pickerActive.value = false;
+  }
+
   // ---------- 交互模式 / 裁剪比例 ----------
   const mode = ref<'edit' | 'crop'>('edit');
   const cropAspect = ref<number | null>(null);
@@ -568,6 +663,37 @@ export const useEditorStore = defineStore('editor', () => {
     } catch (err) {
       toast('error', t('msg.exportFail', { v: err instanceof Error ? err.message : String(err) }));
       return null;
+    } finally {
+      exporting.value = false;
+    }
+  }
+
+  /** 修好的图直接写入系统剪贴板（PNG 无损，含水印），贴进微信/文档即用 */
+  async function copyToClipboard(): Promise<boolean> {
+    if (!sourceBuffer.value || !meta.value) {
+      toast('info', t('msg.openImageFirst'));
+      return false;
+    }
+    exporting.value = true;
+    try {
+      const resp = await runExport({
+        buffer: sourceBuffer.value.slice(0),
+        meta: meta.value,
+        params: cloneParams(params),
+        lut: lutData.value,
+        format: 'png',
+        quality: 1,
+        keepExif: false,
+        stripGps: exportOptions.stripGps,
+        scale: exportOptions.scale,
+      });
+      if (!resp.ok || !resp.bytes) throw new Error(resp.error || t('msg.exportFail', { v: '' }));
+      await window.api.writeClipboardImage(resp.bytes);
+      toast('success', t('exportPanel.clipboardDone'));
+      return true;
+    } catch (err) {
+      toast('error', t('msg.exportFail', { v: err instanceof Error ? err.message : String(err) }));
+      return false;
     } finally {
       exporting.value = false;
     }
@@ -736,9 +862,12 @@ export const useEditorStore = defineStore('editor', () => {
     setShowOriginal, resetView,
     // lut
     selectBuiltin, loadExternalCube, setLutStrength, removeLut, syncLutFromParams,
+    // presets / clipboard / copy-paste
+    applyPreset, copyToClipboard, copyEdits, pasteEdits,
     // geometry
     rotate90, toggleFlipH, toggleFlipV, setCrop, resetCrop, resetGeometryAll, resetAdjust, resetColorAll,
-    // mode / zoom / export / project
+    // picker / mode / zoom / export / project
+    pickerActive, togglePicker, cancelPicker, applyWhiteBalance,
     mode, cropAspect, setMode, setCropAspect, zoomBy,
     exportCurrent, saveProjectFile, openProjectFile,
     // image

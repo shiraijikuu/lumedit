@@ -21,6 +21,17 @@
       <button class="icon-btn" :title="t('topbar.redoTitle')" :disabled="!store.canRedo" @click="store.redoEdit()">
         ↷
       </button>
+      <button class="icon-btn text-icon" :title="t('topbar.copyEditsTitle')" :disabled="!store.hasImage" @click="store.copyEdits()">
+        {{ t('topbar.copyEdits') }}
+      </button>
+      <button
+        class="icon-btn text-icon"
+        :title="t('topbar.pasteEditsTitle')"
+        :disabled="!store.hasImage"
+        @click="store.pasteEdits()"
+      >
+        {{ t('topbar.pasteEdits') }}
+      </button>
       <div class="divider"></div>
       <button class="icon-btn" :title="t('topbar.rotL')" :disabled="!store.hasImage" @click="store.rotate90(-1)">
         ↺

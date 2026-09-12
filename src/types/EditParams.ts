@@ -265,3 +265,27 @@ export function cloneParams(p: EditParams): EditParams {
   }
   return cloned;
 }
+
+// ---------------- 调色预设（v0.3.0）：整套颜色参数的保存 / 应用 ----------------
+/** 预设覆盖的颜色分组（不含几何与水印；应用时经 ensureParams 补齐兼容） */
+export interface PresetColorParams {
+  adjust: AdjustParams;
+  curve: CurveParams;
+  hsl: HslParams;
+  colorGrade: ColorGradeParams;
+  effects: EffectsParams;
+  lut: LutParams;
+}
+
+/** 从当前参数中摘出预设所需的颜色分组（深拷贝） */
+export function pickPresetParams(p: EditParams): PresetColorParams {
+  const c = cloneParams(p);
+  return {
+    adjust: c.adjust,
+    curve: c.curve,
+    hsl: c.hsl,
+    colorGrade: c.colorGrade,
+    effects: c.effects,
+    lut: c.lut,
+  };
+}

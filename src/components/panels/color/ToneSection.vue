@@ -1,7 +1,19 @@
 <template>
   <div class="tone">
     <template v-for="g in groups" :key="g.title">
-      <p class="group-label">{{ t(g.title) }}</p>
+      <p class="group-label">
+        {{ t(g.title) }}
+        <button
+          v-if="g.picker"
+          type="button"
+          class="ghost mini picker-btn"
+          :class="{ active: store.pickerActive }"
+          :title="t('adjust.pickerTitle')"
+          @click="store.togglePicker()"
+        >
+          {{ t('adjust.picker') }}
+        </button>
+      </p>
       <SliderRow
         v-for="s in g.items"
         :key="s.key"
@@ -30,9 +42,10 @@ import SliderRow from '../../ui/SliderRow.vue';
 const store = useEditorStore();
 
 type Item = { key: keyof AdjustParams; label: string; min: number; max: number };
-const groups: Array<{ title: string; items: Item[] }> = [
+const groups: Array<{ title: string; items: Item[]; picker?: boolean }> = [
   {
     title: 'adjust.wb',
+    picker: true,
     items: [
       { key: 'temperature', label: 'adjust.temperature', min: -1, max: 1 },
       { key: 'tint', label: 'adjust.tint', min: -1, max: 1 },
@@ -81,5 +94,19 @@ function onReset(key: keyof AdjustParams): void {
 }
 .group-label:first-child {
   margin-top: 0;
+}
+.group-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.picker-btn {
+  margin-left: auto;
+  font-size: 10.5px;
+  padding: 1px 7px;
+}
+.picker-btn.active {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 </style>

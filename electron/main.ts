@@ -1,6 +1,6 @@
 // LumEdit 主进程：窗口、文件 IPC、中文菜单、双轨检查更新
 // （语义版本走 electron-updater；同版本 build 修订走远程 update.json，对齐 camera-watermark-windows）
-import { app, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron';
+import { app, BrowserWindow, clipboard, ipcMain, dialog, Menu, nativeImage, shell } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import path from 'node:path';
 import fs from 'node:fs/promises';
@@ -342,6 +342,63 @@ function registerIpc(): void {
       await writeUserLutLib(lib);
     }
     return lib;
+  });
+
+  // ---------------- 调色预设（userData/presets.json，主进程直管，无需路径授权） ----------------
+  interface PresetRecord {
+    id: string;
+    name: string;
+    createdAt: number;
+    params: unknown;
+  }
+  function presetsFile(): string {
+    return path.join(app.getPath('userData'), 'presets.json');
+  }
+  async function readPresets(): Promise<PresetRecord[]> {
+    try {
+      const arr = JSON.parse(await fs.readFile(presetsFile(), 'utf-8'));
+      return Array.isArray(arr) ? (arr as PresetRecord[]) : [];
+    } catch {
+      return [];
+    }
+  }
+  async function writePresets(list: PresetRecord[]): Promise<void> {
+    await fs.writeFile(presetsFile(), JSON.stringify(list, null, 2), 'utf-8');
+  }
+
+  ipcMain.handle('presets:list', () => readPresets());
+
+  ipcMain.handle('presets:save', async (_e, name: string, params: unknown) => {
+    const list = await readPresets();
+    if (typeof name === 'string' && name.trim() && params && typeof params === 'object') {
+      list.push({
+        id: randomUUID(),
+        name: name.trim().slice(0, 40),
+        createdAt: Date.now(),
+        params,
+      });
+      await writePresets(list);
+    }
+    return list;
+  });
+
+  ipcMain.handle('presets:delete', async (_e, id: string) => {
+    const list = await readPresets();
+    const idx = list.findIndex((x) => x.id === id);
+    if (idx >= 0) {
+      list.splice(idx, 1);
+      await writePresets(list);
+    }
+    return list;
+  });
+
+  // 把导出的位图写入系统剪贴板（修完图直接贴进聊天/文档）
+  ipcMain.handle('clipboard:writeImage', (_e, bytes: ArrayBuffer | Uint8Array) => {
+    const buf = bytes instanceof Uint8Array ? Buffer.from(bytes) : Buffer.from(new Uint8Array(bytes));
+    const image = nativeImage.createFromBuffer(buf);
+    if (image.isEmpty()) throw new Error('clipboard image decode failed');
+    clipboard.writeImage(image);
+    return { ok: true };
   });
 
   ipcMain.handle('fs:readBuffer', async (_e, p: string) => {

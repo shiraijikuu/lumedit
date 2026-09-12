@@ -39,6 +39,15 @@ function onKeydown(e: KeyboardEvent): void {
   if (ctrl && e.key.toLowerCase() === 'o' && e.shiftKey) {
     e.preventDefault();
     void store.openProjectFile();
+  } else if (ctrl && e.altKey && e.key.toLowerCase() === 'c' && !typing) {
+    e.preventDefault();
+    store.copyEdits();
+  } else if (ctrl && e.altKey && e.key.toLowerCase() === 'v' && !typing) {
+    e.preventDefault();
+    store.pasteEdits();
+  } else if (ctrl && e.shiftKey && e.key.toLowerCase() === 'c' && !typing) {
+    e.preventDefault();
+    void store.copyToClipboard();
   } else if (ctrl && e.key.toLowerCase() === 'o' && !typing) {
     e.preventDefault();
     void store.openPicker();

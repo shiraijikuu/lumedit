@@ -71,6 +71,12 @@ export interface LumeditAPI {
     remove: (id: string) => Promise<UserLutRecord[]>;
   };
   readBuffer: (path: string) => Promise<ArrayBuffer>;
+  presets: {
+    list: () => Promise<{ id: string; name: string; createdAt: number; params: unknown }[]>;
+    save: (name: string, params: unknown) => Promise<{ id: string; name: string; createdAt: number; params: unknown }[]>;
+    remove: (id: string) => Promise<{ id: string; name: string; createdAt: number; params: unknown }[]>;
+  };
+  writeClipboardImage: (bytes: ArrayBuffer | Uint8Array) => Promise<{ ok: boolean }>;
   saveBuffer: (
     defaultName: string,
     filters: { name: string; extensions: string[] }[],

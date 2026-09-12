@@ -14,6 +14,15 @@ const api = {
       ipcRenderer.invoke('lut:update', { id, ...patch }),
     remove: (id: string) => ipcRenderer.invoke('lut:delete', id),
   },
+  // 调色预设（保存 / 应用 / 删除，持久化到 userData）
+  presets: {
+    list: () => ipcRenderer.invoke('presets:list'),
+    save: (name: string, params: unknown) => ipcRenderer.invoke('presets:save', name, params),
+    remove: (id: string) => ipcRenderer.invoke('presets:delete', id),
+  },
+  // 剪贴板：把导出位图写入系统剪贴板
+  writeClipboardImage: (bytes: ArrayBuffer | Uint8Array) =>
+    ipcRenderer.invoke('clipboard:writeImage', bytes),
   readBuffer: (p: string) => ipcRenderer.invoke('fs:readBuffer', p),
   saveBuffer: (
     defaultName: string,

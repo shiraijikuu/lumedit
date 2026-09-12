@@ -25,6 +25,10 @@ export default {
     label: 'Language',
   },
   topbar: {
+    copyEdits: 'Copy',
+    pasteEdits: 'Paste',
+    copyEditsTitle: 'Copy edits (Ctrl+Alt+C)',
+    pasteEditsTitle: 'Paste edits (Ctrl+Alt+V)',
     brandSub: 'Light Editor',
     openImage: 'Open Image',
     openProject: 'Open Project',
@@ -55,6 +59,7 @@ export default {
     resetAll: 'Reset Geometry',
   },
   canvas: {
+    pickerTip: 'Picker: click a neutral grey area on the image (Esc to cancel)',
     cropTip: 'Drag a crop box on the image, fine-tune with handles',
     cancelCrop: 'Cancel · Esc',
     applyCrop: 'Apply · Enter',
@@ -65,6 +70,8 @@ export default {
     webglFail: 'WebGL2 is not supported in this environment, cannot start rendering',
   },
   adjust: {
+    picker: 'Picker',
+    pickerTitle: 'White balance picker: click a neutral grey area (white wall / grey card) to auto-correct',
     tone: 'Basic Tone',
     wb: 'White Balance',
     light: 'Light',
@@ -128,6 +135,8 @@ export default {
     untitled: 'Untitled LUT',
   },
   exportPanel: {
+    clipboardBtn: 'Copy to clipboard',
+    clipboardDone: 'Copied to clipboard, paste it anywhere',
     format: 'Format',
     quality: 'Quality',
     outputSize: 'Output Size',
@@ -174,7 +183,24 @@ export default {
     license: 'MIT License',
     done: 'Done',
   },
+  preset: {
+    title: 'Presets',
+    save: 'Save current',
+    namePlaceholder: 'Preset name…',
+    empty: 'No presets saved yet',
+    hint: 'Saves the whole look (incl. LUT), click to apply; double-click a slider value to reset it',
+    applyTip: 'Click to apply this preset',
+    saved: 'Preset "{v}" saved',
+    removed: 'Preset removed',
+    applied: 'Applied preset "{v}"',
+  },
+  editCopy: {
+    copied: 'Edits copied',
+    none: 'Nothing copied yet — copy edits from an image first',
+    pastedName: 'Pasted edits',
+  },
   msg: {
+    presetFail: 'Preset operation failed: {v}',
     lutBuiltinFail: 'Built-in LUT failed to load: {v}',
     lutFileFail: 'LUT file cannot be loaded:\n{v}',
     lutRemoved: 'This LUT has been removed from the library',

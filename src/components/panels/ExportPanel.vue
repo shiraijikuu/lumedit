@@ -65,6 +65,14 @@
       <button class="primary export-btn" :disabled="!store.hasImage || store.exporting" @click="store.exportCurrent()">
         {{ store.exporting ? t('exportPanel.exporting') : t('exportPanel.exportBtn') }}
       </button>
+      <button
+        class="ghost export-btn"
+        style="margin-top: 8px"
+        :disabled="!store.hasImage || store.exporting"
+        @click="store.copyToClipboard()"
+      >
+        {{ t('exportPanel.clipboardBtn') }}
+      </button>
     </div>
   </div>
 </template>
