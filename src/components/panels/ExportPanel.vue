@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="panel-section">
-      <div class="panel-title">格式</div>
+      <div class="panel-title">{{ t('exportPanel.format') }}</div>
       <div class="segmented">
         <button
           v-for="f in formats"
@@ -14,7 +14,7 @@
       </div>
       <SliderRow
         v-if="store.exportOptions.format !== 'png'"
-        label="质量"
+        :label="t('exportPanel.quality')"
         :model-value="store.exportOptions.quality"
         :min="0.3"
         :max="1"
@@ -26,7 +26,7 @@
     </div>
 
     <div class="panel-section">
-      <div class="panel-title">输出尺寸</div>
+      <div class="panel-title">{{ t('exportPanel.outputSize') }}</div>
       <div class="segmented">
         <button
           v-for="s in scales"
@@ -40,9 +40,9 @@
     </div>
 
     <div class="panel-section">
-      <div class="panel-title">元数据</div>
+      <div class="panel-title">{{ t('exportPanel.metadata') }}</div>
       <div class="opt-row">
-        <span>保留 EXIF 拍摄参数</span>
+        <span>{{ t('exportPanel.keepExif') }}</span>
         <ToggleSwitch
           :model-value="store.exportOptions.keepExif"
           @update:model-value="store.exportOptions.keepExif = $event"
@@ -50,20 +50,20 @@
       </div>
       <div class="opt-row">
         <span>
-          清除 GPS 定位
-          <i v-if="store.meta?.hasGps" class="gps-warn">原图含 GPS</i>
+          {{ t('exportPanel.stripGps') }}
+          <i v-if="store.meta?.hasGps" class="gps-warn">{{ t('exportPanel.gpsInSrc') }}</i>
         </span>
         <ToggleSwitch
           :model-value="store.exportOptions.stripGps"
           @update:model-value="store.exportOptions.stripGps = $event"
         />
       </div>
-      <p class="hint">导出在 Web Worker 中按全分辨率渲染，与预览所见一致。</p>
+      <p class="hint">{{ t('exportPanel.hint') }}</p>
     </div>
 
     <div class="panel-section">
       <button class="primary export-btn" :disabled="!store.hasImage || store.exporting" @click="store.exportCurrent()">
-        {{ store.exporting ? '正在导出…' : '导出图片（Ctrl+E）' }}
+        {{ store.exporting ? t('exportPanel.exporting') : t('exportPanel.exportBtn') }}
       </button>
     </div>
   </div>
@@ -71,6 +71,7 @@
 
 <script setup lang="ts">
 import { useEditorStore } from '@/stores/editor';
+import { t } from '@/i18n';
 import SliderRow from '../ui/SliderRow.vue';
 import ToggleSwitch from '../ui/ToggleSwitch.vue';
 

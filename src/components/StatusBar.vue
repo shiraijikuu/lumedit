@@ -4,7 +4,7 @@
       <span v-if="store.imageName" class="file-name" :title="store.imagePath ?? ''">{{ store.imageName }}</span>
       <span v-if="dims" class="meta-item">{{ dims.w }} × {{ dims.h }}</span>
       <span v-if="store.meta?.format" class="meta-item">{{ store.meta.format.toUpperCase() }}</span>
-      <span v-if="store.meta?.hasGps" class="gps">含 GPS · 导出默认清除</span>
+      <span v-if="store.meta?.hasGps" class="gps">{{ t('status.gps') }}</span>
     </div>
     <div class="right">
       <span v-if="stateText" class="update-state" @click="$emit('checkUpdate')">{{ stateText }}</span>
@@ -12,7 +12,7 @@
         <button class="zb" @click="store.zoomBy(1/1.2)">−</button>
         <span class="zoom-val">{{ Math.round(store.view.scale * 100) }}%</span>
         <button class="zb" @click="store.zoomBy(1.2)">+</button>
-        <button class="zb fit" @click="store.resetView()">适配</button>
+        <button class="zb fit" @click="store.resetView()">{{ t('status.fit') }}</button>
       </div>
     </div>
   </footer>
@@ -22,6 +22,7 @@
 import { computed } from 'vue';
 import { useEditorStore } from '@/stores/editor';
 import { useUpdate } from '@/composables/useUpdate';
+import { t } from '@/i18n';
 
 const store = useEditorStore();
 const { stateText } = useUpdate();

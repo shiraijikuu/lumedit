@@ -8,12 +8,16 @@ files:
   - dist/**/*
   - dist-electron/**/*
   - package.json
+# 只保留中英两套 Chromium 语言包（其余约 38MB 裁掉）；应用自身界面语言由内置 i18n 提供
+electronLanguages:
+  - zh-CN
+  - en-US
 win:
   target:
     - target: nsis
       arch: [x64]
   icon: build/icon.ico
-  artifactName: ${productName}-${version}-setup.${ext}
+  artifactName: LumEdit-${version}-setup.${ext}
 nsis:
   oneClick: false
   perMachine: false
@@ -25,7 +29,7 @@ nsis:
   # 安装目录安全加固：强制独立 LumEdit 子文件夹 + 卸载防误删
   include: build/installer.nsh
 asar: true
-# electron-updater 依赖发布时生成的 latest.yml；仓库创建后执行 `npm run dist` 即会产出，
+# electron-updater 依赖发布时生成的 latest.yml；仓库创建后执行 `npm run dist:full` 即会产出，
 # 随后把 release/ 下安装包与 latest.yml 一并上传到 GitHub Release。
 publish:
   - provider: github

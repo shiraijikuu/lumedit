@@ -2,7 +2,7 @@
   <div>
     <div class="panel-section">
       <div class="panel-title" style="margin-bottom: 0">
-        水印 · camera-watermark
+        {{ t('watermark.title') }}
         <ToggleSwitch
           :model-value="!!store.params.watermark?.enabled"
           @update:model-value="store.setWatermarkEnabled($event)"
@@ -15,21 +15,21 @@
         <button class="studio-entry" @click="store.openCwmStudio()">
           <span class="se-ico">◳</span>
           <span class="se-txt">
-            <strong>{{ configured ? '编辑水印' : '打开水印工作室' }}</strong>
-            <small>文字 / 模糊卡片 / 画框 / 图片水印 / 二维码 · 独立窗口完整编辑</small>
+            <strong>{{ configured ? t('watermark.edit') : t('watermark.openStudio') }}</strong>
+            <small>{{ t('watermark.studioSub') }}</small>
           </span>
           <span class="se-arrow">›</span>
         </button>
         <p class="hint">
-          水印在裁剪、调色、LUT 之后作为最后一步合成，不会被调色影响；导出时按全分辨率渲染。
+          {{ t('watermark.hint') }}
         </p>
       </div>
 
       <div class="panel-section" v-if="configured">
         <div class="wm-status">
           <span class="dot-ok"></span>
-          <span class="wm-status-txt">已配置水印，导出时自动合成</span>
-          <button class="ghost wm-clear" @click="store.clearWatermark()">移除</button>
+          <span class="wm-status-txt">{{ t('watermark.configured') }}</span>
+          <button class="ghost wm-clear" @click="store.clearWatermark()">{{ t('watermark.remove') }}</button>
         </div>
       </div>
     </template>
@@ -39,6 +39,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useEditorStore } from '@/stores/editor';
+import { t } from '@/i18n';
 import ToggleSwitch from '../ui/ToggleSwitch.vue';
 
 const store = useEditorStore();

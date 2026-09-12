@@ -2,8 +2,8 @@
   <div>
     <div class="panel-section">
       <div class="panel-title">
-        裁剪比例
-        <button class="ghost" @click="store.resetCrop()">复位选框</button>
+        {{ t('geometry.cropRatio') }}
+        <button class="ghost" @click="store.resetCrop()">{{ t('geometry.resetFrame') }}</button>
       </div>
       <div class="chip-wrap">
         <span
@@ -13,7 +13,7 @@
           :class="{ active: store.cropAspect === r.value }"
           @click="store.setCropAspect(r.value)"
         >
-          {{ r.label }}
+          {{ r.value === null ? t('geometry.free') : r.label }}
         </span>
       </div>
       <button
@@ -21,18 +21,18 @@
         :style="{ marginTop: '12px', width: '100%' }"
         @click="store.setMode('crop')"
       >
-        {{ store.mode === 'crop' ? '正在裁剪（在图上拖选）' : '进入裁剪拖拽' }}
+        {{ store.mode === 'crop' ? t('geometry.cropping') : t('geometry.enterCrop') }}
       </button>
     </div>
 
     <div class="panel-section">
-      <div class="panel-title">旋转</div>
+      <div class="panel-title">{{ t('geometry.rotate') }}</div>
       <div class="row" style="margin-bottom: 10px">
         <button style="flex: 1" @click="store.rotate90(-1)">↺ 90°</button>
         <button style="flex: 1" @click="store.rotate90(1)">90° ↻</button>
       </div>
       <SliderRow
-        label="角度"
+        :label="t('geometry.angle')"
         :model-value="store.params.geometry.rotation"
         :min="-180"
         :max="180"
@@ -46,25 +46,25 @@
     </div>
 
     <div class="panel-section">
-      <div class="panel-title">翻转</div>
+      <div class="panel-title">{{ t('geometry.flip') }}</div>
       <div class="row">
         <button
           class="ghost"
           :style="{ flex: 1, borderColor: store.params.geometry.flipH ? 'var(--accent)' : undefined }"
           @click="store.toggleFlipH()"
         >
-          ⇋ 水平
+          {{ t('geometry.flipH') }}
         </button>
         <button
           class="ghost"
           :style="{ flex: 1, borderColor: store.params.geometry.flipV ? 'var(--accent)' : undefined }"
           @click="store.toggleFlipV()"
         >
-          ⇅ 垂直
+          {{ t('geometry.flipV') }}
         </button>
       </div>
       <button class="ghost" style="width: 100%; margin-top: 12px" @click="store.resetGeometryAll()">
-        重置全部几何
+        {{ t('geometry.resetAll') }}
       </button>
     </div>
   </div>
@@ -72,12 +72,13 @@
 
 <script setup lang="ts">
 import { useEditorStore } from '@/stores/editor';
+import { t } from '@/i18n';
 import SliderRow from '../ui/SliderRow.vue';
 
 const store = useEditorStore();
 
 const ratios = [
-  { label: '自由', value: null },
+  { label: 'free', value: null },
   { label: '1:1', value: 1 },
   { label: '3:2', value: 3 / 2 },
   { label: '2:3', value: 2 / 3 },

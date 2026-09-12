@@ -4,8 +4,14 @@ import electron from 'vite-plugin-electron/simple';
 import renderer from 'vite-plugin-electron-renderer';
 import { resolve } from 'node:path';
 
+// 功能档位：LUMEDIT_TIER=basic 出「基础版」（仅第一档），缺省/full 出「完整版」
+const appTier = process.env.LUMEDIT_TIER === 'basic' ? 'basic' : 'full';
+
 // Electron + Vite + Vue3 脚手架配置
 export default defineConfig({
+  define: {
+    __APP_TIER__: JSON.stringify(appTier),
+  },
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),

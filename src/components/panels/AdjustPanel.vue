@@ -1,60 +1,135 @@
 <template>
-  <div class="panel-section">
-    <div class="panel-title">
-      基础调色
-      <button class="ghost" @click="store.resetAdjust()">全部重置</button>
-    </div>
+  <div class="color-panel">
+    <CollapseSection>
+      <template #title>
+        {{ t('adjust.tone') }}
+      </template>
+      <template #actions>
+        <button type="button" class="ghost mini" @click="store.resetAdjust()">{{ t('common.reset') }}</button>
+      </template>
+      <ToneSection />
+    </CollapseSection>
 
-    <SliderRow
-      v-for="s in sliders"
-      :key="s.key"
-      :label="s.label"
-      :model-value="store.params.adjust[s.key]"
-      :min="s.min"
-      :max="s.max"
-      :step="0.01"
-      :decimals="2"
-      @update:model-value="onSlider(s.key, $event)"
-      @scrub-start="store.mutate(() => {}, true)"
-      @scrub-end="store.endScrub()"
-      @reset="onReset(s.key)"
-    />
-    <p class="hint">双击滑块数值可复位单项</p>
+    <CollapseSection>
+      <template #title>{{ t('adjust.curve') }}</template>
+      <template #actions>
+        <button type="button" class="ghost mini" @click="resetCurve">{{ t('common.reset') }}</button>
+      </template>
+      <CurveSection />
+    </CollapseSection>
+
+    <template v-if="IS_FULL">
+      <CollapseSection :default-open="false">
+        <template #title>
+          {{ t('adjust.hsl') }}<span class="pro-badge">{{ t('adjust.proBadge') }}</span>
+        </template>
+        <template #actions>
+          <button type="button" class="ghost mini" @click="resetHsl">{{ t('common.reset') }}</button>
+        </template>
+        <HslSection />
+      </CollapseSection>
+
+      <CollapseSection :default-open="false">
+        <template #title>
+          {{ t('adjust.grade') }}<span class="pro-badge">{{ t('adjust.proBadge') }}</span>
+        </template>
+        <template #actions>
+          <button type="button" class="ghost mini" @click="resetGrade">{{ t('common.reset') }}</button>
+        </template>
+        <GradeSection />
+      </CollapseSection>
+
+      <CollapseSection :default-open="false">
+        <template #title>
+          {{ t('adjust.effects') }}<span class="pro-badge">{{ t('adjust.proBadge') }}</span>
+        </template>
+        <template #actions>
+          <button type="button" class="ghost mini" @click="resetEffects">{{ t('common.reset') }}</button>
+        </template>
+        <EffectsSection />
+      </CollapseSection>
+    </template>
+
+    <div class="panel-foot">
+      <button type="button" class="ghost" @click="resetAll">{{ t('common.resetAll') }}</button>
+    </div>
+    <p class="hint">{{ t('adjust.hint') }}</p>
   </div>
 </template>
 
 <script setup lang="ts">
-import type { AdjustParams } from '@/types/EditParams';
-import { defaultEditParams } from '@/types/EditParams';
+import { defaultEditParams, linearCurve } from '@/types/EditParams';
 import { useEditorStore } from '@/stores/editor';
-import SliderRow from '../ui/SliderRow.vue';
+import { t } from '@/i18n';
+import { IS_FULL_TIER as IS_FULL } from '@/config/tier';
+import CollapseSection from '../ui/CollapseSection.vue';
+import ToneSection from './color/ToneSection.vue';
+import CurveSection from './color/CurveSection.vue';
+import HslSection from './color/HslSection.vue';
+import GradeSection from './color/GradeSection.vue';
+import EffectsSection from './color/EffectsSection.vue';
 
 const store = useEditorStore();
 
-const sliders: Array<{ key: keyof AdjustParams; label: string; min: number; max: number }> = [
-  { key: 'exposure', label: '曝光', min: -2, max: 2 },
-  { key: 'brightness', label: '亮度', min: -1, max: 1 },
-  { key: 'contrast', label: '对比', min: -1, max: 1 },
-  { key: 'saturation', label: '饱和', min: -1, max: 1 },
-  { key: 'temperature', label: '色温', min: -1, max: 1 },
-];
-
-// 直接写响应式参数；scrubStart 已保证整段拖动只压一次撤销栈
-function onSlider(key: keyof AdjustParams, v: number): void {
-  store.params.adjust[key] = v;
-}
-
-function onReset(key: keyof AdjustParams): void {
+function resetCurve(): void {
   store.mutate((p) => {
-    p.adjust[key] = defaultEditParams.adjust[key];
+    p.curve = {
+      master: linearCurve(),
+      red: linearCurve(),
+      green: linearCurve(),
+      blue: linearCurve(),
+    };
   });
+}
+function resetHsl(): void {
+  store.mutate((p) => {
+    p.hsl = JSON.parse(JSON.stringify(defaultEditParams.hsl));
+  });
+}
+function resetGrade(): void {
+  store.mutate((p) => {
+    p.colorGrade = JSON.parse(JSON.stringify(defaultEditParams.colorGrade));
+  });
+}
+function resetEffects(): void {
+  store.mutate((p) => {
+    p.effects = { ...defaultEditParams.effects };
+  });
+}
+function resetAll(): void {
+  store.resetColorAll();
 }
 </script>
 
 <style scoped>
+.color-panel {
+  padding-bottom: 4px;
+}
+.pro-badge {
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: #7db8ff;
+  background: var(--accent-soft);
+  border-radius: 5px;
+  text-transform: none;
+}
+button.mini {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+.panel-foot {
+  padding: 12px 16px 0;
+}
+.panel-foot button {
+  width: 100%;
+}
 .hint {
-  margin-top: 8px;
+  padding: 10px 16px 4px;
   font-size: 11px;
   color: var(--txt-2);
+  line-height: 1.5;
 }
 </style>

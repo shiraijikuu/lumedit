@@ -3,6 +3,7 @@
 // - 同版本 build 递增：引导浏览器打开下载页手动更新
 import { ref } from 'vue';
 import { checkRemote } from '@/core/update/updateService';
+import { t } from '@/i18n';
 
 type UpdateState = 'idle' | 'checking' | 'downloading' | 'ready' | 'manual' | 'latest' | 'error';
 
@@ -17,16 +18,16 @@ function bindUpdaterEvents(): void {
     switch (ev.type) {
       case 'available':
         state.value = 'downloading';
-        stateText.value = `发现新版本 ${ev.version ?? ''}，后台下载中…`;
+        stateText.value = t('update.foundDownloading', { v: ev.version ?? '' });
         break;
       case 'downloading':
         state.value = 'downloading';
-        stateText.value = `正在下载更新 ${ev.percent ?? 0}%`;
+        stateText.value = t('update.downloading', { p: ev.percent ?? 0 });
         break;
       case 'downloaded':
         // 主进程已弹原生「立即重启」对话框，这里只更新状态
         state.value = 'ready';
-        stateText.value = '新版本已就绪，等待重启';
+        stateText.value = t('update.readyRestart');
         break;
       case 'not-available':
         if (state.value === 'checking') {
@@ -47,7 +48,7 @@ async function checkNow(silent = false): Promise<void> {
   if (!api?.appMeta) return; // 浏览器开发环境无更新能力
   bindUpdaterEvents();
   state.value = 'checking';
-  stateText.value = '正在检查更新…';
+  stateText.value = t('update.checking');
   try {
     const meta = await api.appMeta();
     // 1) 语义版本：交给 electron-updater（后台自动下载）
@@ -62,29 +63,29 @@ async function checkNow(silent = false): Promise<void> {
     const verdict = await checkRemote(api, meta.version, meta.build);
     if (verdict.kind === 'newer') {
       state.value = 'downloading';
-      stateText.value = `新版本 ${verdict.version} 准备中…`;
+      stateText.value = t('update.preparing', { v: verdict.version });
       if (!silent) {
-        alert(`发现新版本 ${verdict.version}\n\n${verdict.notes}\n\n将在后台自动下载，完成后提示重启。`);
+        alert(t('update.foundAuto', { v: verdict.version, notes: verdict.notes }));
       }
     } else if (verdict.kind === 'rebuilt') {
       state.value = 'manual';
-      stateText.value = `有修订版 build ${verdict.build}`;
-      if (confirm(`发现修订版本（build ${verdict.build}），需要手动下载安装。\n\n${verdict.notes}\n\n是否前往下载页？`)) {
+      stateText.value = t('update.revision', { b: verdict.build });
+      if (confirm(t('update.foundManual', { b: verdict.build, notes: verdict.notes }))) {
         await api.openExternal(verdict.downloadUrl);
       }
     } else if (verdict.kind === 'latest') {
       state.value = 'latest';
       stateText.value = '';
-      if (!silent) alert('当前已是最新版本。');
+      if (!silent) alert(t('update.latest'));
     } else {
       state.value = 'error';
       stateText.value = '';
-      if (!silent) alert(`更新检查失败：${verdict.message}`);
+      if (!silent) alert(t('update.checkFail', { v: verdict.message }));
     }
   } catch (err) {
     state.value = 'error';
     stateText.value = '';
-    if (!silent) alert(`更新检查失败：${err instanceof Error ? err.message : String(err)}`);
+    if (!silent) alert(t('update.checkFail', { v: err instanceof Error ? err.message : String(err) }));
   }
 }
 

@@ -38,25 +38,25 @@
 
     <!-- 裁剪确认条 -->
     <div v-if="isCrop" class="crop-toolbar glass fade-in">
-      <span class="crop-tip">在图上拖出裁剪框，手柄微调</span>
-      <button class="ghost" @click="cancelCrop">取消 · Esc</button>
-      <button class="primary" @click="applyCrop">应用 · Enter</button>
+      <span class="crop-tip">{{ t('canvas.cropTip') }}</span>
+      <button class="ghost" @click="cancelCrop">{{ t('canvas.cancelCrop') }}</button>
+      <button class="primary" @click="applyCrop">{{ t('canvas.applyCrop') }}</button>
     </div>
 
     <!-- 原图对比提示 -->
-    <div v-if="store.showOriginal && store.hasImage" class="compare-badge glass">原图</div>
+    <div v-if="store.showOriginal && store.hasImage" class="compare-badge glass">{{ t('canvas.original') }}</div>
 
     <!-- 空状态 -->
     <div v-if="!store.hasImage" class="empty-state">
       <AppLogo :size="76" class="empty-logo" />
-      <p class="empty-title">LumEdit 光影轻修</p>
-      <p class="empty-sub">点击左上角「打开」或拖入图片</p>
-      <p class="empty-sub">JPG / PNG / WebP · 纯本地处理，图片绝不上传</p>
+      <p class="empty-title">{{ t('canvas.title') }}</p>
+      <p class="empty-sub">{{ t('canvas.empty1') }}</p>
+      <p class="empty-sub">{{ t('canvas.empty2') }}</p>
     </div>
 
     <!-- WebGL2 不支持 -->
     <div v-if="webglFailed" class="empty-state">
-      <p class="empty-title">当前环境不支持 WebGL2，无法启动渲染</p>
+      <p class="empty-title">{{ t('canvas.webglFail') }}</p>
     </div>
   </div>
 </template>
@@ -64,10 +64,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useEditorStore } from '@/stores/editor';
+import { t } from '@/i18n';
 import { ImageRenderer } from '@/core/render/ImageRenderer';
-import { GeometryStage } from '@/core/render/stages/GeometryStage';
-import { AdjustStage } from '@/core/render/stages/AdjustStage';
-import { LutStage } from '@/core/render/stages/LutStage';
+import { createEditStageBundle } from '@/core/render/editStages';
 import { PassthroughStage } from '@/core/render/stages/PassthroughStage';
 import AppLogo from '@/components/ui/AppLogo.vue';
 import type { EditParams } from '@/types/EditParams';
@@ -81,9 +80,9 @@ const panning = ref(false);
 
 let renderer: ImageRenderer | null = null;
 const passthrough = new PassthroughStage();
-const geometryStage = new GeometryStage();
-const adjustStage = new AdjustStage();
-const lutStage = new LutStage();
+// 统一按档位组装编辑管线（几何→影调→曲线→[二档]→LUT），预览/导出同源
+const editBundle = createEditStageBundle();
+const lutStage = editBundle.lut;
 
 const viewportSize = reactive({ w: 0, h: 0 });
 const stageBaseSize = reactive({ w: 0, h: 0 });
@@ -152,7 +151,7 @@ function applyStages(): void {
   if (isCrop.value) {
     renderer.setStages([passthrough]);
   } else {
-    renderer.setStages([geometryStage, adjustStage, lutStage]);
+    renderer.setStages(editBundle.ordered);
   }
   renderer.setParams(store.params);
   feedLut();
@@ -391,6 +390,7 @@ onUnmounted(() => {
   store.registerEditedCapture(null);
   renderer?.destroy();
   renderer = null;
+  editBundle.dispose();
 });
 
 // 输入图切换：克隆一份 bitmap 给 renderer（renderer 销毁纹理时会 close）

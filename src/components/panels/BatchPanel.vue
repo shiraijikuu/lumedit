@@ -1,12 +1,12 @@
 <template>
   <div>
     <div class="panel-section">
-      <div class="panel-title">批量处理（P1）</div>
+      <div class="panel-title">{{ t('batch.title') }}</div>
       <div class="row">
-        <button style="flex: 1" @click="store.addBatchFiles()">＋ 添加图片</button>
-        <button class="ghost" :disabled="store.batchRunning" @click="store.clearBatch()">清空</button>
+        <button style="flex: 1" @click="store.addBatchFiles()">{{ t('batch.add') }}</button>
+        <button class="ghost" :disabled="store.batchRunning" @click="store.clearBatch()">{{ t('batch.clear') }}</button>
       </div>
-      <p class="hint">批量任务统一套用当前调色 / LUT / 几何 / 水印参数，在 Worker 队列中逐张全分辨率导出。</p>
+      <p class="hint">{{ t('batch.hint') }}</p>
       <div class="batch-list">
         <div v-for="it in store.batchItems" :key="it.path" class="batch-item" @dblclick="store.switchTo(it)">
           <span class="status-dot" :class="it.status"></span>
@@ -14,14 +14,14 @@
           <span class="batch-status">{{ statusText(it.status) }}</span>
           <button class="ghost mini" :disabled="store.batchRunning" @click="store.removeBatchItem(it.path)">×</button>
         </div>
-        <p v-if="!store.batchItems.length" class="empty">尚未添加图片</p>
+        <p v-if="!store.batchItems.length" class="empty">{{ t('batch.empty') }}</p>
       </div>
     </div>
 
     <div class="panel-section">
-      <div class="panel-title">输出目录</div>
+      <div class="panel-title">{{ t('batch.outputDir') }}</div>
       <button class="ghost" style="width: 100%" @click="store.pickBatchOutputDir()">
-        {{ store.batchOutputDir || '选择输出文件夹' }}
+        {{ store.batchOutputDir || t('batch.pickDir') }}
       </button>
       <div v-if="store.batchRunning" class="progress">
         <div class="progress-bar">
@@ -36,10 +36,10 @@
         :disabled="!store.batchItems.length"
         @click="store.startBatch()"
       >
-        开始批量导出
+        {{ t('batch.start') }}
       </button>
       <button v-else class="ghost" style="width: 100%; margin-top: 12px" @click="store.cancelBatch()">
-        取消任务
+        {{ t('batch.cancelTask') }}
       </button>
     </div>
   </div>
@@ -48,13 +48,20 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useEditorStore } from '@/stores/editor';
+import { t } from '@/i18n';
 
 const store = useEditorStore();
 const pct = computed(() =>
   store.batchProgress.total ? Math.round((store.batchProgress.done / store.batchProgress.total) * 100) : 0
 );
 function statusText(s: string): string {
-  return { pending: '待处理', running: '处理中', done: '完成', error: '失败' }[s] ?? s;
+  const map: Record<string, string> = {
+    pending: t('batch.stPending'),
+    running: t('batch.stRunning'),
+    done: t('batch.stDone'),
+    error: t('batch.stError'),
+  };
+  return map[s] ?? s;
 }
 </script>
 

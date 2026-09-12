@@ -29,6 +29,7 @@ const api = {
 
   // 应用 / 更新
   appMeta: () => ipcRenderer.invoke('app:meta'),
+  setLocale: (locale: 'zh-CN' | 'en') => ipcRenderer.invoke('app:setLocale', locale),
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
   checkAutoUpdater: () => ipcRenderer.invoke('updater:check'),
   installUpdate: () => ipcRenderer.invoke('updater:install'),

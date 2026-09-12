@@ -72,7 +72,7 @@ export async function runBatch(
 
     try {
       // 每张图独立解析 EXIF/方向（参数相同，元数据各自不同）
-      const decoded = await decodeForPreview(item.buffer.slice(0));
+      const decoded = await decodeForPreview(item.buffer.slice(0), item.name);
       const meta: ImageMeta = decoded.meta;
       decoded.bitmap.close();
 

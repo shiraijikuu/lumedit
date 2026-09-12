@@ -17,17 +17,87 @@ export interface GeometryParams {
   flipV: boolean;
 }
 
+// ---------------- 第一档：基础影调（基础版 / 完整版均含） ----------------
 export interface AdjustParams {
-  /** 亮度 -1 ~ 1 */
+  /** 曝光（EV 档）-2 ~ 2 */
+  exposure: number;
+  /** 亮度（加性）-1 ~ 1 */
   brightness: number;
   /** 对比度 -1 ~ 1 */
   contrast: number;
-  /** 饱和度 -1 ~ 1 */
-  saturation: number;
-  /** 曝光（EV 档）-2 ~ 2 */
-  exposure: number;
+  /** 高光 -1 ~ 1（压暗/提亮亮部） */
+  highlights: number;
+  /** 阴影 -1 ~ 1（提亮/压暗暗部） */
+  shadows: number;
+  /** 白色色阶 -1 ~ 1 */
+  whites: number;
+  /** 黑色色阶 -1 ~ 1 */
+  blacks: number;
   /** 色温 -1（冷） ~ 1（暖） */
   temperature: number;
+  /** 色调 -1（绿） ~ 1（品红） */
+  tint: number;
+  /** 清晰度（局部对比）-1 ~ 1 */
+  clarity: number;
+  /** 去朦胧 -1 ~ 1 */
+  dehaze: number;
+  /** 饱和度（全局）-1 ~ 1 */
+  saturation: number;
+  /** 自然饱和度（保护高饱和）-1 ~ 1 */
+  vibrance: number;
+}
+
+// ---------------- 第一档：RGB 色调曲线 ----------------
+export interface CurvePoint {
+  /** 输入 0~1 */
+  x: number;
+  /** 输出 0~1 */
+  y: number;
+}
+export interface CurveParams {
+  /** 主曲线（同时作用 RGB） */
+  master: CurvePoint[];
+  red: CurvePoint[];
+  green: CurvePoint[];
+  blue: CurvePoint[];
+}
+
+// ---------------- 第二档：HSL 混色器（仅完整版） ----------------
+export const HSL_HUES = ['red', 'orange', 'yellow', 'green', 'aqua', 'blue', 'purple', 'magenta'] as const;
+export type HslHue = (typeof HSL_HUES)[number];
+export interface HslChannel {
+  /** 色相偏移 -1 ~ 1 */
+  hue: number;
+  /** 饱和 -1 ~ 1 */
+  sat: number;
+  /** 明亮度 -1 ~ 1 */
+  lum: number;
+}
+export type HslParams = Record<HslHue, HslChannel>;
+
+// ---------------- 第二档：颜色分级（仅完整版） ----------------
+export interface GradeWheel {
+  /** 色相 0~360 */
+  hue: number;
+  /** 饱和 0~1 */
+  sat: number;
+}
+export interface ColorGradeParams {
+  shadows: GradeWheel;
+  midtones: GradeWheel;
+  highlights: GradeWheel;
+}
+
+// ---------------- 第二档：效果（仅完整版） ----------------
+export interface EffectsParams {
+  /** 晕影 -1（黑角）~ 1（白角） */
+  vignette: number;
+  /** 颗粒 0 ~ 1 */
+  grain: number;
+  /** 锐化 0 ~ 1 */
+  sharpen: number;
+  /** 降噪 0 ~ 1 */
+  denoise: number;
 }
 
 export interface LutParams {
@@ -54,9 +124,30 @@ export interface WatermarkParams {
 export interface EditParams {
   geometry: GeometryParams;
   adjust: AdjustParams;
+  /** 第一档：RGB 色调曲线 */
+  curve: CurveParams;
+  /** 第二档：HSL 混色器（基础版不挂载 Stage / 不显示 UI，但保留以兼容工程文件） */
+  hsl: HslParams;
+  /** 第二档：颜色分级 */
+  colorGrade: ColorGradeParams;
+  /** 第二档：效果 */
+  effects: EffectsParams;
   lut: LutParams;
   /** P1：camera-watermark 水印（管线最后一步，导出阶段离屏合成） */
   watermark?: WatermarkParams;
+}
+
+export function linearCurve(): CurvePoint[] {
+  return [
+    { x: 0, y: 0 },
+    { x: 1, y: 1 },
+  ];
+}
+
+function defaultHsl(): HslParams {
+  const out = {} as HslParams;
+  for (const h of HSL_HUES) out[h] = { hue: 0, sat: 0, lum: 0 };
+  return out;
 }
 
 export const defaultEditParams: EditParams = {
@@ -70,11 +161,37 @@ export const defaultEditParams: EditParams = {
     flipV: false,
   },
   adjust: {
+    exposure: 0,
     brightness: 0,
     contrast: 0,
-    saturation: 0,
-    exposure: 0,
+    highlights: 0,
+    shadows: 0,
+    whites: 0,
+    blacks: 0,
     temperature: 0,
+    tint: 0,
+    clarity: 0,
+    dehaze: 0,
+    saturation: 0,
+    vibrance: 0,
+  },
+  curve: {
+    master: linearCurve(),
+    red: linearCurve(),
+    green: linearCurve(),
+    blue: linearCurve(),
+  },
+  hsl: defaultHsl(),
+  colorGrade: {
+    shadows: { hue: 220, sat: 0 },
+    midtones: { hue: 40, sat: 0 },
+    highlights: { hue: 40, sat: 0 },
+  },
+  effects: {
+    vignette: 0,
+    grain: 0,
+    sharpen: 0,
+    denoise: 0,
   },
   lut: {
     id: null,
@@ -84,11 +201,59 @@ export const defaultEditParams: EditParams = {
   },
 };
 
+/**
+ * 用默认值补齐缺失字段（兼容旧版工程文件 / 历史撤销快照）。
+ * 纯函数：不修改入参，返回一个结构完整的新对象。
+ */
+export function ensureParams(p: Partial<EditParams> | null | undefined): EditParams {
+  const d = defaultEditParams;
+  const out: EditParams = cloneParams(d);
+  if (!p) return out;
+  if (p.geometry) Object.assign(out.geometry, p.geometry);
+  if (p.adjust) Object.assign(out.adjust, d.adjust, p.adjust);
+  if (p.curve) {
+    out.curve.master = p.curve.master?.length ? p.curve.master.map((q) => ({ ...q })) : linearCurve();
+    out.curve.red = p.curve.red?.length ? p.curve.red.map((q) => ({ ...q })) : linearCurve();
+    out.curve.green = p.curve.green?.length ? p.curve.green.map((q) => ({ ...q })) : linearCurve();
+    out.curve.blue = p.curve.blue?.length ? p.curve.blue.map((q) => ({ ...q })) : linearCurve();
+  }
+  if (p.hsl) {
+    for (const h of HSL_HUES) {
+      const ch = p.hsl[h];
+      if (ch) Object.assign(out.hsl[h], ch);
+    }
+  }
+  if (p.colorGrade) {
+    Object.assign(out.colorGrade.shadows, p.colorGrade.shadows);
+    Object.assign(out.colorGrade.midtones, p.colorGrade.midtones);
+    Object.assign(out.colorGrade.highlights, p.colorGrade.highlights);
+  }
+  if (p.effects) Object.assign(out.effects, p.effects);
+  if (p.lut) Object.assign(out.lut, p.lut);
+  if (p.watermark) out.watermark = p.watermark;
+  return out;
+}
+
 /** 深拷贝参数（结构化克隆，杜绝撤销栈别名引用） */
 export function cloneParams(p: EditParams): EditParams {
   const cloned: EditParams = {
     geometry: { ...p.geometry },
     adjust: { ...p.adjust },
+    curve: {
+      master: p.curve.master.map((q) => ({ ...q })),
+      red: p.curve.red.map((q) => ({ ...q })),
+      green: p.curve.green.map((q) => ({ ...q })),
+      blue: p.curve.blue.map((q) => ({ ...q })),
+    },
+    hsl: Object.fromEntries(
+      HSL_HUES.map((h) => [h, { ...p.hsl[h] }])
+    ) as HslParams,
+    colorGrade: {
+      shadows: { ...p.colorGrade.shadows },
+      midtones: { ...p.colorGrade.midtones },
+      highlights: { ...p.colorGrade.highlights },
+    },
+    effects: { ...p.effects },
     lut: { ...p.lut },
   };
   if (p.watermark) {

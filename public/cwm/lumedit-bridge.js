@@ -190,19 +190,34 @@
       /* ignore */
     }
 
-    // 用原始文件 ingest，以完整读取 EXIF（机型/参数变量）；随后把底图替换为 LumEdit 调色结果
+    let fallbackMeta = init.meta || {};
+    let fallbackExifBytes = null;
+    // 用原始文件 ingest，以完整读取 EXIF（机型/参数变量）；随后把底图替换为 LumEdit 调色结果。
+    // RAW 等浏览器无法解码的容器会让 ingest 抛错，此时必须回退到 LumEdit 的预览和 meta，
+    // 不能连带中断整个工作室初始化。
     if (init.origBuffer && init.fileName) {
       const file = new File([init.origBuffer], init.fileName, {
         type: init.mime || 'image/jpeg',
       });
-      await ingest(file);
-    } else if (init.baseDataUrl) {
+      try {
+        await ingest(file);
+        const ingested = photos[current];
+        if (ingested) {
+          fallbackMeta = ingested.meta || fallbackMeta;
+          fallbackExifBytes = ingested.exifBytes || null;
+        }
+      } catch (e) {
+        console.warn('[lm-bridge] original ingest failed; using LumEdit preview', e);
+      }
+    }
+
+    if (!photos.length && init.baseDataUrl) {
       const img = await loadImage(init.baseDataUrl);
       photos.push({
         name: init.fileName || 'image',
         src: await imageToCanvas(img, 2200),
-        meta: init.meta || {},
-        exifBytes: null,
+        meta: fallbackMeta,
+        exifBytes: fallbackExifBytes,
       });
       current = 0;
     }

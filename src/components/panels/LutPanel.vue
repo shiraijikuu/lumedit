@@ -2,8 +2,8 @@
   <div>
     <div class="panel-section">
       <div class="panel-title">
-        场景 LUT（{{ store.builtinLuts.length }}）
-        <span v-if="store.lutLoading" class="loading">加载中…</span>
+        {{ t('lut.scene') }}（{{ store.builtinLuts.length }}）
+        <span v-if="store.lutLoading" class="loading">{{ t('lut.loading') }}</span>
       </div>
       <div v-for="cat in categories" :key="cat.id" class="cat-block">
         <div class="cat-name">{{ cat.name }}</div>
@@ -24,13 +24,13 @@
     </div>
 
     <div class="panel-section">
-      <div class="panel-title">我的 LUT（{{ store.userLuts.length }}）</div>
+      <div class="panel-title">{{ t('lut.mine') }}（{{ store.userLuts.length }}）</div>
       <button class="ghost" style="width: 100%" @click="store.importUserLuts()">
-        导入 .cube 到我的 LUT
+        {{ t('lut.importToLib') }}
       </button>
 
       <div v-for="g in userGroups" :key="g.category" class="cat-block">
-        <div class="cat-name">{{ g.category }}</div>
+        <div class="cat-name">{{ catLabel(g.category) }}</div>
         <div class="lut-grid">
           <div
             v-for="lut in g.items"
@@ -44,7 +44,7 @@
             <span class="lut-name">{{ lut.name }}</span>
             <button
               class="lut-edit"
-              title="命名 / 分类 / 删除"
+              :title="t('lut.editTitle')"
               @click.stop="startEdit(lut.id, lut.name, lut.category)"
             >
               ✎
@@ -56,39 +56,39 @@
       <!-- 内联命名 / 分类 / 删除 -->
       <div v-if="editingId" class="user-edit glass">
         <div class="ue-row">
-          <span class="ue-label">名称</span>
+          <span class="ue-label">{{ t('lut.name') }}</span>
           <input v-model="editName" class="ue-input" @keyup.enter="commitEdit" />
         </div>
         <div class="ue-row">
-          <span class="ue-label">分类</span>
-          <input v-model="editCategory" class="ue-input" list="user-lut-cats" placeholder="未分类" />
+          <span class="ue-label">{{ t('lut.category') }}</span>
+          <input v-model="editCategory" class="ue-input" list="user-lut-cats" :placeholder="t('lut.uncategorized')" />
           <datalist id="user-lut-cats">
-            <option v-for="c in categoryOptions" :key="c" :value="c"></option>
+            <option v-for="c in categoryOptions" :key="c" :value="catLabel(c)"></option>
           </datalist>
         </div>
         <div class="ue-actions">
-          <button class="ghost ue-del" @click="deleteEditing">删除</button>
-          <button class="ghost" @click="cancelEdit">取消</button>
-          <button class="primary" @click="commitEdit">保存</button>
+          <button class="ghost ue-del" @click="deleteEditing">{{ t('common.delete') }}</button>
+          <button class="ghost" @click="cancelEdit">{{ t('common.cancel') }}</button>
+          <button class="primary" @click="commitEdit">{{ t('common.save') }}</button>
         </div>
       </div>
 
       <!-- 一次性临时导入（不入库） -->
       <button class="ghost text-btn" @click="store.loadExternalCube()">
-        临时打开 .cube（不保存到库）
+        {{ t('lut.tempOpen') }}
       </button>
       <div v-if="store.externalLut && !store.params.lut.path?.startsWith('user-lut:')" class="ext-row">
-        <span class="ext-name">临时：{{ store.externalLut.name }}</span>
+        <span class="ext-name">{{ t('lut.tempPrefix') }}：{{ store.externalLut.name }}</span>
       </div>
     </div>
 
     <div class="panel-section" v-if="store.params.lut.id || store.params.lut.path">
       <div class="panel-title">
         {{ store.currentLutName ?? 'LUT' }}
-        <button class="ghost" @click="store.removeLut()">移除</button>
+        <button class="ghost" @click="store.removeLut()">{{ t('lut.remove') }}</button>
       </div>
       <SliderRow
-        label="强度"
+        :label="t('lut.strength')"
         :model-value="store.params.lut.strength"
         :min="0"
         :max="1"
@@ -111,11 +111,18 @@
 import { computed, ref } from 'vue';
 import { useEditorStore } from '@/stores/editor';
 import { lutManager } from '@/core/render/lut/lutManager';
+import { t } from '@/i18n';
 import SliderRow from '../ui/SliderRow.vue';
 
 const store = useEditorStore();
 const categories = lutManager.categories();
 const byCategory = (id: string) => store.builtinLuts.filter((l) => l.category === id);
+
+// 默认分类的内部存储值（跨语言保持一致），仅在显示层翻译
+const UNCAT = '未分类';
+function catLabel(c: string): string {
+  return c === UNCAT ? t('lut.uncategorized') : c;
+}
 
 // ---- 用户 LUT 库：按分类分组 ----
 const userGroups = computed(() => {
@@ -161,7 +168,7 @@ async function commitEdit(): Promise<void> {
 }
 async function deleteEditing(): Promise<void> {
   if (!editingId.value) return;
-  if (!window.confirm('从我的 LUT 中删除该 LUT？')) return;
+  if (!window.confirm(t('lut.confirmDelete'))) return;
   await store.removeUserLut(editingId.value);
   editingId.value = null;
 }

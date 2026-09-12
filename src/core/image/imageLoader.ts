@@ -1,5 +1,6 @@
 import exifr from 'exifr';
 import { extractTiffBytes, sniffFormat, type ImageFormat } from '../metadata/containerFormat';
+import { extractRawPreview } from './rawExtractor';
 import {
   formatAperture,
   formatDateTime,
@@ -28,8 +29,13 @@ export interface ImageMeta {
   hasGps: boolean;
   /** 原始 TIFF 形式 EXIF（不含容器头），用于导出保真回写 */
   tiff: Uint8Array | null;
+  /** 解码所用容器格式（RAW 提取内嵌 JPEG 后为 jpeg） */
   format: ImageFormat;
+  /** 源文件类型：常规图片或 RAW（RAW 时 format 为内嵌图容器格式） */
+  sourceFormat: ImageFormat | 'raw';
   cameraText: string | null;
+  /** camera-watermark 水印模板使用的原始 EXIF 字段（RAW 无法二次解码时直接复用） */
+  cwmMeta: Record<string, unknown>;
   // 拍摄参数字段（水印模板 / 信息展示用，移植自 camera-watermark）
   make: string;
   model: string;
@@ -42,24 +48,54 @@ export interface DecodedImage {
   meta: ImageMeta;
 }
 
-/** 从原始文件 buffer 解码出预览位图（已校正方向/色彩、已降采样） */
-export async function decodeForPreview(buffer: ArrayBuffer): Promise<DecodedImage> {
-  const bytes = new Uint8Array(buffer);
-  const format = sniffFormat(bytes);
-  if (!format) throw new Error('不支持的图片格式（仅支持 JPG / PNG / WebP）');
+/** 把任意源（含 RAW）规整为可被 createImageBitmap 解码的工作字节与容器格式 */
+function resolveWorkBytes(
+  bytes: Uint8Array,
+  fileName?: string
+): { work: Uint8Array; format: ImageFormat; rawTiff: Uint8Array | null; sourceFormat: ImageFormat | 'raw' } {
+  const sniffed = sniffFormat(bytes);
+  if (sniffed) return { work: bytes, format: sniffed, rawTiff: null, sourceFormat: sniffed };
+  // RAW：提取最大内嵌 JPEG（通常是全分辨率），后续完全复用 JPEG 链路
+  const raw = extractRawPreview(bytes, fileName);
+  if (!raw) throw new Error('不支持的图片格式（支持 JPG / PNG / WebP / RAW）');
+  return { work: raw.jpeg, format: 'jpeg', rawTiff: raw.tiff, sourceFormat: 'raw' };
+}
 
-  const tiff = extractTiffBytes(bytes, format);
-  const parsed = await safeParseExif(buffer);
+function toAlignedBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+}
+
+/** 从原始文件 buffer 解码出预览位图（已校正方向/色彩、已降采样） */
+export async function decodeForPreview(buffer: ArrayBuffer, fileName?: string): Promise<DecodedImage> {
+  const bytes = new Uint8Array(buffer);
+  const resolved = resolveWorkBytes(bytes, fileName);
+  const { format } = resolved;
+  const workBuffer = toAlignedBuffer(resolved.work);
+
+  // RAW 的拍摄元数据在原始 TIFF 容器里（内嵌 JPEG 通常不带 APP1）；常规图直接读工作缓冲
+  const exifBuffer = resolved.sourceFormat === 'raw' ? buffer : workBuffer;
+  const parsed = await safeParseExif(exifBuffer);
   const orientation = normalizeOrientation(parsed?.Orientation);
+  // RAW 内嵌 JPEG 可能没有 Orientation 标签，Chromium 因而不会自动转正；
+  // 此时必须使用 RAW TIFF 中的 Orientation 手动补齐，常规图仍交给 Chromium 自动处理。
+  const embeddedExif = resolved.sourceFormat === 'raw' ? await safeParseExif(workBuffer) : parsed;
+  const embeddedOrientation = normalizeOrientation(embeddedExif?.Orientation);
   const hasGps = !!(parsed?.latitude && parsed?.longitude);
-  const colorSpace = detectColorSpace(bytes, parsed);
+  const colorSpace = detectColorSpace(resolved.work, parsed);
   const values = buildTextValues(parsed);
   const cameraText = values.camera || null;
+  const cwmMeta = buildCwmMeta(parsed);
+
+  // EXIF 回写源：优先内嵌/容器自带 TIFF，RAW 再退回整个 RAW TIFF（rewriteTiffExif 只抽元数据）
+  const tiff = extractTiffBytes(resolved.work, format) ?? resolved.rawTiff;
 
   // 关键：Electron 33 的 Chromium 中 createImageBitmap 会按 EXIF Orientation 自动定向
   // （实测显式传 imageOrientation:'none' 也无法关闭，横像素+orientation=8 直接解为正立竖图）。
   // 因此直接信任解码结果，绝不能再手动 applyOrientation，否则就是双重旋转（用户看到侧躺/倒置）。
-  let bitmap = await createImageBitmap(new Blob([buffer]));
+  let bitmap = await createImageBitmap(new Blob([workBuffer]));
+  if (resolved.sourceFormat === 'raw' && embeddedOrientation === 1 && orientation !== 1) {
+    bitmap = await applyOrientation(bitmap, orientation);
+  }
   // 浏览器已按 EXIF 定向，此即正向原始维度（固化前记录）
   const orientedW = bitmap.width;
   const orientedH = bitmap.height;
@@ -79,7 +115,9 @@ export async function decodeForPreview(buffer: ArrayBuffer): Promise<DecodedImag
     hasGps,
     tiff,
     format,
+    sourceFormat: resolved.sourceFormat,
     cameraText,
+    cwmMeta,
     make: (parsed?.Make as string) ?? '',
     model: (parsed?.Model as string) ?? '',
     lens: (parsed?.LensModel as string) ?? '',
@@ -98,7 +136,14 @@ export async function decodeFull(
 ): Promise<ImageBitmap> {
   // 同 decodeForPreview：Chromium 已自动 EXIF 定向，不再手动旋转（避免双重旋转）。
   // 同样经 Canvas 固化一次行序，保证导出与预览、WebGL 上屏方向一致。
-  let bitmap = await redrawBitmap(await createImageBitmap(new Blob([buffer])), null);
+  let workBuffer = buffer;
+  if (meta.sourceFormat === 'raw') {
+    // RAW：重新提取内嵌全尺寸 JPEG（与预览同源，保证导出所见即所得）
+    const raw = extractRawPreview(new Uint8Array(buffer));
+    if (!raw) throw new Error('RAW 内嵌预览丢失，无法全分辨率解码');
+    workBuffer = raw.jpeg.buffer.slice(raw.jpeg.byteOffset, raw.jpeg.byteOffset + raw.jpeg.byteLength);
+  }
+  let bitmap = await redrawBitmap(await createImageBitmap(new Blob([workBuffer])), null);
   if (meta.colorSpace === 'adobe-rgb') {
     bitmap = await convertAdobeRgbToSrgb(bitmap);
   }
@@ -175,6 +220,36 @@ function buildTextValues(p: ParsedExif | null): ExifTextValues {
   };
 }
 
+/** 构造 camera-watermark 的 EXIF 结构，避免其水印工作室二次解码 RAW。 */
+export function buildCwmMeta(p: ParsedExif | null): Record<string, unknown> {
+  if (!p) return {};
+  const date = p.DateTimeOriginal instanceof Date
+    ? (Number.isNaN(p.DateTimeOriginal.getTime()) ? undefined : p.DateTimeOriginal.toISOString())
+    : p.DateTimeOriginal;
+  const lat = typeof p.latitude === 'number' ? p.latitude : undefined;
+  const lon = typeof p.longitude === 'number' ? p.longitude : undefined;
+  return {
+    Make: p.Make ?? '',
+    Model: p.Model ?? '',
+    FNumber: p.FNumber,
+    ExposureTime: p.ExposureTime,
+    ISO: p.ISO ?? p.ISOSpeedRatings,
+    FocalLength: p.FocalLength,
+    DateTimeOriginal: date,
+    LensModel: p.LensModel ?? '',
+    ExposureBias: p.ExposureBiasValue,
+    WhiteBalance: p.WhiteBalance,
+    MeteringMode: p.MeteringMode,
+    FocalLength35: p.FocalLengthIn35mmFormat,
+    Artist: p.Artist ?? '',
+    Copyright: p.Copyright ?? '',
+    GPSLatitude: lat,
+    GPSLongitude: lon,
+    GPSLatitudeRef: lat == null ? undefined : lat < 0 ? 'S' : 'N',
+    GPSLongitudeRef: lon == null ? undefined : lon < 0 ? 'W' : 'E',
+  };
+}
+
 // ---------------- Orientation 1-8 ----------------
 
 function swapDims(o: number): boolean {
@@ -205,6 +280,7 @@ export async function applyOrientation(
     default: return source;
   }
   ctx.drawImage(source, 0, 0);
+  source.close();
   return canvas.convertToBlob().then((blob) => createImageBitmap(blob));
 }
 

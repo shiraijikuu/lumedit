@@ -19,6 +19,7 @@ import EditorCanvas from './components/EditorCanvas.vue';
 import AboutModal from './components/AboutModal.vue';
 import { useEditorStore } from './stores/editor';
 import { useUpdate } from './composables/useUpdate';
+import { getLocale } from './i18n';
 
 const store = useEditorStore();
 const { checkNow } = useUpdate();
@@ -98,6 +99,8 @@ let removeWmListener: (() => void) | null = null;
 onMounted(() => {
   window.addEventListener('keydown', onKeydown);
   window.addEventListener('keyup', onKeyup);
+  // 把持久化的界面语言同步到主进程，重建对应语言的原生菜单
+  void window.api?.setLocale?.(getLocale());
   // 载入用户自建 LUT 库（命名/分类/持久化）
   void store.loadUserLuts();
   if (window.api?.onMenuAction) {

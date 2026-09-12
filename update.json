@@ -1,15 +1,15 @@
 {
-  "version": "0.1.0",
-  "build": 1,
-  "coreVersion": "0.1.0",
-  "shellVersion": "0.1.0",
+  "version": "0.2.0",
+  "build": 4,
+  "coreVersion": "0.2.0",
+  "shellVersion": "0.2.0",
   "releaseDate": "2026-09-12",
   "downloads": {
-    "windows": "https://github.com/shiraijikuu/lumedit/releases/latest"
+    "windows": "https://github.com/shiraijikuu/lumedit/releases/download/v0.2.0/LumEdit-0.2.0-setup.exe"
   },
-  "download_url": "https://github.com/shiraijikuu/lumedit/releases/latest",
+  "download_url": "https://github.com/shiraijikuu/lumedit/releases/download/v0.2.0/LumEdit-0.2.0-setup.exe",
   "notes": {
-    "zh": "LumEdit 首个版本：裁剪 / 基础调色 / LUT（内置 19 款 + 我的 LUT 库）/ camera-watermark 水印 / 保真导出 / 批量处理。",
-    "en": "First LumEdit release: crop, adjustments, LUT (19 built-in + user library), camera-watermark studio, fidelity export and batch."
+    "zh": "LumEdit v0.2.0 build 4 修复：RAW（ARW / DNG / NEF 等）图片现在可以正常打开 camera-watermark 水印工作室；RAW 竖图按 Orientation 正确转正；应用水印后可正常重建预览。",
+    "en": "LumEdit v0.2.0 build 4 fixes RAW (ARW/DNG/NEF/etc.) images failing to open the camera-watermark studio, portrait RAW orientation, and watermark preview rebuilding after apply."
   }
 }

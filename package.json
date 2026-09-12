@@ -1,7 +1,7 @@
 {
   "name": "lumedit",
-  "version": "0.1.1",
-  "build": 2,
+  "version": "0.2.0",
+  "build": 4,
   "private": true,
   "description": "LumEdit 光影轻修 - 纯本地单张精修桌面工具（裁剪/调色/LUT/保真导出）",
   "author": "LumEdit",
@@ -13,7 +13,9 @@
     "typecheck": "vue-tsc --noEmit",
     "build:smoke": "esbuild test/smoke/smoke.ts --bundle --format=esm --loader:.cube=text --outfile=test/smoke/smoke.bundle.js",
     "smoke": "npm run build:smoke && electron test/smoke/smoke-main.cjs",
-    "dist": "vite build && electron-builder --config electron-builder.yml",
+    "dist": "node scripts/dist.mjs full",
+    "dist:full": "node scripts/dist.mjs full",
+    "dist:basic": "node scripts/dist.mjs basic",
     "dist:check": "node scripts/check-asar.mjs"
   },
   "dependencies": {

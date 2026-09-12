@@ -8,9 +8,7 @@ import { BlitProgram } from '../render/BlitProgram';
 import { bitmapToTextureSource } from '../render/gpuUtils';
 import { runPipeline } from '../render/renderPipeline';
 import type { RenderContext } from '../render/RenderStage';
-import { GeometryStage } from '../render/stages/GeometryStage';
-import { AdjustStage } from '../render/stages/AdjustStage';
-import { LutStage } from '../render/stages/LutStage';
+import { createEditStageBundle } from '../render/editStages';
 import type { LutData } from '../render/lut/lutTypes';
 
 export type ExportFormat = 'jpeg' | 'png' | 'webp';
@@ -74,12 +72,11 @@ async function renderEditedPng(req: ExportRequest): Promise<{ bytes: Uint8Array;
   if (!gl) throw new Error('导出线程不支持 WebGL2');
 
   const inputTex = uploadInputTexture(gl, bitmap);
-  const geometry = new GeometryStage();
-  const adjust = new AdjustStage();
-  const lutStage = new LutStage();
-  if (req.lut) lutStage.setLut(gl, req.lut);
+  // 与预览完全相同的档位管线（几何→影调→曲线→[二档]→LUT）
+  const bundle = createEditStageBundle();
+  if (req.lut) bundle.lut.setLut(gl, req.lut);
   // 水印不在 WebGL 管线内：camera-watermark 在主线程离屏窗口作为最后一步合成
-  const stages = [geometry, adjust, lutStage];
+  const stages = bundle.ordered;
 
   const context: RenderContext = { gl, width: bitmap.width, height: bitmap.height };
   const out = runPipeline(gl, stages, inputTex, req.params, context);

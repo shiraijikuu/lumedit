@@ -1,59 +1,63 @@
 <template>
   <header class="topbar glass">
-    <div class="brand" title="关于 LumEdit" @click="$emit('openAbout')">
+    <div class="brand" title="LumEdit" @click="$emit('openAbout')">
       <AppLogo :size="24" class="brand-mark" />
       <span class="brand-name">LumEdit</span>
-      <span class="brand-sub">光影轻修</span>
+      <span class="brand-sub">{{ t('topbar.brandSub') }}</span>
     </div>
 
     <div class="group">
-      <button class="primary" @click="store.openPicker()">打开图片</button>
-      <button class="ghost" @click="store.openProjectFile()">打开工程</button>
-      <button class="ghost" :disabled="!store.hasImage" @click="store.saveProjectFile()">保存工程</button>
+      <button class="primary" @click="store.openPicker()">{{ t('topbar.openImage') }}</button>
+      <button class="ghost" @click="store.openProjectFile()">{{ t('topbar.openProject') }}</button>
+      <button class="ghost" :disabled="!store.hasImage" @click="store.saveProjectFile()">{{ t('topbar.saveProject') }}</button>
     </div>
 
     <div class="divider"></div>
 
     <div class="group">
-      <button class="icon-btn" title="撤销 Ctrl+Z" :disabled="!store.canUndo" @click="store.undoEdit()">
+      <button class="icon-btn" :title="t('topbar.undoTitle')" :disabled="!store.canUndo" @click="store.undoEdit()">
         ↶
       </button>
-      <button class="icon-btn" title="重做 Ctrl+Y" :disabled="!store.canRedo" @click="store.redoEdit()">
+      <button class="icon-btn" :title="t('topbar.redoTitle')" :disabled="!store.canRedo" @click="store.redoEdit()">
         ↷
       </button>
       <div class="divider"></div>
-      <button class="icon-btn" title="逆时针 90°" :disabled="!store.hasImage" @click="store.rotate90(-1)">
+      <button class="icon-btn" :title="t('topbar.rotL')" :disabled="!store.hasImage" @click="store.rotate90(-1)">
         ↺
       </button>
-      <button class="icon-btn" title="顺时针 90°" :disabled="!store.hasImage" @click="store.rotate90(1)">
+      <button class="icon-btn" :title="t('topbar.rotR')" :disabled="!store.hasImage" @click="store.rotate90(1)">
         ↻
       </button>
       <button
         class="icon-btn"
-        title="按住查看原图（\\）"
+        :title="t('topbar.originalTitle')"
         :class="{ active: store.showOriginal }"
         :disabled="!store.hasImage"
         @pointerdown="store.setShowOriginal(true)"
         @pointerup="store.setShowOriginal(false)"
         @pointerleave="store.setShowOriginal(false)"
       >
-        原图
+        {{ t('topbar.original') }}
       </button>
     </div>
 
     <div class="spacer"></div>
 
     <div class="group">
-      <button class="ghost" @click="$emit('checkUpdate')">检查更新</button>
+      <button class="icon-btn lang-btn" @click="toggleLocale()">{{ otherLangLabel }}</button>
+      <button class="ghost" @click="$emit('checkUpdate')">{{ t('topbar.checkUpdate') }}</button>
     </div>
   </header>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useEditorStore } from '@/stores/editor';
+import { t, getLocale, toggleLocale } from '@/i18n';
 import AppLogo from '@/components/ui/AppLogo.vue';
 const store = useEditorStore();
 defineEmits<{ (e: 'checkUpdate'): void; (e: 'openAbout'): void }>();
+const otherLangLabel = computed(() => (getLocale() === 'zh-CN' ? 'EN' : '中'));
 </script>
 
 <style scoped>
@@ -119,6 +123,11 @@ defineEmits<{ (e: 'checkUpdate'): void; (e: 'openAbout'): void }>();
 .icon-btn.active {
   background: var(--accent-soft);
   color: #7db8ff;
+}
+.lang-btn {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
 }
 .spacer {
   flex: 1;

@@ -3,6 +3,7 @@ import { computed, reactive, ref, shallowRef } from 'vue';
 import {
   cloneParams,
   defaultEditParams,
+  ensureParams,
 } from '@/types/EditParams';
 import {
   canRedo as canRedoStack,
@@ -17,6 +18,7 @@ import { cubeToLutData, parseCube } from '@/core/render/lut/cubeParser';
 import { lutManager, type BuiltinLutInfo } from '@/core/render/lut/lutManager';
 import type { LutData } from '@/core/render/lut/lutTypes';
 import type { EditParams } from '@/types/EditParams';
+import { t } from '@/i18n';
 
 /** camera-watermark「应用」回传（与 env.d.ts 的 CwmApplyResult 同构） */
 interface CwmApplyPayload {
@@ -121,10 +123,16 @@ export const useEditorStore = defineStore('editor', () => {
     refreshHistoryFlags();
   }
 
-  function restoreParams(src: EditParams): void {
-    params.geometry = { ...src.geometry };
-    params.adjust = { ...src.adjust };
-    params.lut = { ...src.lut };
+  function restoreParams(srcRaw: EditParams): void {
+    // ensureParams 补齐旧版工程/历史快照缺失的 curve/hsl/colorGrade/effects 分组
+    const src = cloneParams(ensureParams(srcRaw));
+    params.geometry = src.geometry;
+    params.adjust = src.adjust;
+    params.curve = src.curve;
+    params.hsl = src.hsl;
+    params.colorGrade = src.colorGrade;
+    params.effects = src.effects;
+    params.lut = src.lut;
     if (src.watermark) {
       params.watermark = {
         enabled: src.watermark.enabled,
@@ -187,7 +195,7 @@ export const useEditorStore = defineStore('editor', () => {
       // LUT 异步到位后兜底重建水印整图（修复先加水印再选 LUT 时预览停留在无 LUT 底图）
       scheduleWmPreview();
     } catch (err) {
-      alert(`内置 LUT 加载失败：${err instanceof Error ? err.message : String(err)}`);
+      alert(t('msg.lutBuiltinFail', { v: err instanceof Error ? err.message : String(err) }));
     } finally {
       lutLoading.value = false;
     }
@@ -209,7 +217,7 @@ export const useEditorStore = defineStore('editor', () => {
       lutVersion.value++;
       scheduleWmPreview();
     } catch (err) {
-      alert(`LUT 文件无法加载：\n${err instanceof Error ? err.message : String(err)}`);
+      alert(t('msg.lutFileFail', { v: err instanceof Error ? err.message : String(err) }));
     }
   }
 
@@ -235,7 +243,7 @@ export const useEditorStore = defineStore('editor', () => {
   async function selectUserLut(id: string): Promise<void> {
     const res = await window.api.lutLib.read(id);
     if (!res) {
-      alert('该 LUT 已从库中移除');
+      alert(t('msg.lutRemoved'));
       return;
     }
     try {
@@ -250,7 +258,7 @@ export const useEditorStore = defineStore('editor', () => {
       lutVersion.value++;
       scheduleWmPreview();
     } catch (err) {
-      alert(`LUT 无法加载：\n${err instanceof Error ? err.message : String(err)}`);
+      alert(t('msg.lutFail', { v: err instanceof Error ? err.message : String(err) }));
     }
   }
 
@@ -291,7 +299,7 @@ export const useEditorStore = defineStore('editor', () => {
       try {
         lutData.value = await lutManager.load(params.lut.id);
       } catch {
-        alert(`内置 LUT 已下架：${params.lut.id}`);
+        alert(t('msg.lutBuiltinGone', { v: params.lut.id ?? '' }));
         lutData.value = null;
       }
     } else if (
@@ -314,7 +322,7 @@ export const useEditorStore = defineStore('editor', () => {
           lutData.value = null;
         }
       } catch {
-        alert(`用户 LUT 丢失：${id}，请重新导入。`);
+        alert(t('msg.userLutLost', { v: id }));
         lutData.value = null;
       }
     } else if (!params.lut.isBuiltin && params.lut.path && externalLut.value?.path === params.lut.path) {
@@ -367,6 +375,17 @@ export const useEditorStore = defineStore('editor', () => {
       p.adjust = cloneParams(defaultEditParams).adjust;
     });
   }
+  /** 重置全部调色分组（影调 / 曲线 / HSL / 颜色分级 / 效果），不动几何与 LUT */
+  function resetColorAll(): void {
+    mutate((p) => {
+      const d = cloneParams(defaultEditParams);
+      p.adjust = d.adjust;
+      p.curve = d.curve;
+      p.hsl = d.hsl;
+      p.colorGrade = d.colorGrade;
+      p.effects = d.effects;
+    });
+  }
 
   // ---------- 水印（整体复用 camera-watermark 引擎） ----------
   // params.watermark（cwmState/cwmMeta）可撤销、进工程文件；
@@ -383,6 +402,10 @@ export const useEditorStore = defineStore('editor', () => {
     editedCapture = fn;
   }
   let wmPreviewTimer: ReturnType<typeof setTimeout> | null = null;
+  /** IPC/contextBridge 不能克隆 Vue reactive Proxy；水印状态进出主进程前统一转成普通对象。 */
+  function cloneForIpc<T>(value: T): T {
+    return JSON.parse(JSON.stringify(value));
+  }
   /** 防抖重建水印预览（调色/几何/LUT/撤销后调用，仅在启用水印时开离屏合成窗） */
   function scheduleWmPreview(): void {
     const wm = params.watermark;
@@ -423,9 +446,16 @@ export const useEditorStore = defineStore('editor', () => {
       : bitmapToDataUrl(previewBitmap.value);
     await window.api.openCwm({
       baseDataUrl,
-      origBuffer: sourceBuffer.value ? sourceBuffer.value.slice(0) : null,
+      // RAW 的原始字节无法被 camera-watermark 解码，传过去只会让工作室启动失败。
+      // LumEdit 已完成 RAW 解码与 EXIF 解析，工作室直接复用预览和 meta。
+      origBuffer: meta.value?.sourceFormat === 'raw'
+        ? null
+        : sourceBuffer.value
+          ? sourceBuffer.value.slice(0)
+          : null,
       fileName: imageName.value,
-      savedState: params.watermark?.cwmState ?? null,
+      meta: meta.value?.cwmMeta ? cloneForIpc(meta.value.cwmMeta) : {},
+      savedState: params.watermark?.cwmState ? cloneForIpc(params.watermark.cwmState) : null,
     });
   }
 
@@ -465,8 +495,8 @@ export const useEditorStore = defineStore('editor', () => {
       if (!baseDataUrl) return;
       const r = await window.api.composeCwm({
         baseDataUrl,
-        state: wm.cwmState,
-        meta: wm.cwmMeta ?? {},
+        state: cloneForIpc(wm.cwmState),
+        meta: wm.cwmMeta ? cloneForIpc(wm.cwmMeta) : {},
         format: 'image/png',
         quality: 1,
       });
@@ -522,7 +552,7 @@ export const useEditorStore = defineStore('editor', () => {
   // ---------- 导出 ----------
   async function exportCurrent(): Promise<string | null> {
     if (!sourceBuffer.value || !meta.value) {
-      alert('请先打开图片');
+      alert(t('msg.openImageFirst'));
       return null;
     }
     exporting.value = true;
@@ -540,16 +570,16 @@ export const useEditorStore = defineStore('editor', () => {
         stripGps: exportOptions.stripGps,
         scale: exportOptions.scale,
       });
-      if (!resp.ok || !resp.bytes) throw new Error(resp.error || '导出失败');
+      if (!resp.ok || !resp.bytes) throw new Error(resp.error || t('msg.exportFailed'));
       // 水印由 exporter 在主线程离屏合成（params.watermark.cwmState）
       const saved = await window.api.saveBuffer(
         `${base}-lumedit.${ext}`,
-        [{ name: '图片', extensions: [ext] }],
+        [{ name: t('topbar.openImage'), extensions: [ext] }],
         resp.bytes
       );
       return saved;
     } catch (err) {
-      alert(`导出失败：${err instanceof Error ? err.message : String(err)}`);
+      alert(t('msg.exportFail', { v: err instanceof Error ? err.message : String(err) }));
       return null;
     } finally {
       exporting.value = false;
@@ -559,7 +589,7 @@ export const useEditorStore = defineStore('editor', () => {
   // ---------- 工程文件 ----------
   async function saveProjectFile(): Promise<void> {
     if (!hasImage.value) {
-      alert('请先打开图片');
+      alert(t('msg.openImageFirst'));
       return;
     }
     const json = serializeProject({
@@ -585,15 +615,19 @@ export const useEditorStore = defineStore('editor', () => {
           const buf = await window.api.readBuffer(proj.source.path);
           await loadImageObject(proj.source.path, proj.source.name, buf);
         } catch {
-          alert(`源图片找不到或无法读取：\n${proj.source.path}\n请手动重新打开图片后再试。`);
+          alert(t('msg.sourceLost', { v: proj.source.path }));
           return;
         }
       }
-      // 恢复参数
-      const p = proj.params;
-      params.geometry = { ...p.geometry };
-      params.adjust = { ...p.adjust };
-      params.lut = { ...p.lut };
+      // 恢复参数（ensureParams 兼容旧工程缺失的调色分组）
+      const p = cloneParams(ensureParams(proj.params));
+      params.geometry = p.geometry;
+      params.adjust = p.adjust;
+      params.curve = p.curve;
+      params.hsl = p.hsl;
+      params.colorGrade = p.colorGrade;
+      params.effects = p.effects;
+      params.lut = p.lut;
       if (p.watermark) {
         params.watermark = {
           enabled: p.watermark.enabled,
@@ -612,7 +646,7 @@ export const useEditorStore = defineStore('editor', () => {
           if (p.lut.path.startsWith(USER_LUT_PREFIX)) {
             const id = p.lut.path.slice(USER_LUT_PREFIX.length);
             const res = await window.api.lutLib.read(id);
-            if (!res) throw new Error('用户 LUT 已删除');
+            if (!res) throw new Error(t('msg.userLutDeleted'));
             text = res.text;
             name = res.record.name;
           } else {
@@ -626,7 +660,7 @@ export const useEditorStore = defineStore('editor', () => {
           lutData.value = data;
           lutVersion.value++;
         } catch {
-          alert(`外部 LUT 丢失：${p.lut.path}，请重新导入。`);
+          alert(t('msg.extLutLost', { v: p.lut.path ?? '' }));
           params.lut.id = null;
           params.lut.path = null;
           params.lut.strength = 0;
@@ -637,7 +671,7 @@ export const useEditorStore = defineStore('editor', () => {
       // 水印预览按恢复的 cwmState 离屏重建
       scheduleWmPreview();
     } catch (err) {
-      alert(err instanceof ProjectError ? err.message : `工程打开失败：${String(err)}`);
+      alert(err instanceof ProjectError ? err.message : t('msg.projectFail', { v: String(err) }));
     }
   }
 
@@ -677,7 +711,7 @@ export const useEditorStore = defineStore('editor', () => {
   async function startBatch(): Promise<void> {
     if (batchRunning.value) return;
     if (batchItems.length === 0) {
-      alert('请先添加图片');
+      alert(t('msg.addImageFirst'));
       return;
     }
     if (!batchOutputDir.value) {
@@ -740,7 +774,7 @@ export const useEditorStore = defineStore('editor', () => {
 
   // ---------- 打开图片 ----------
   async function loadImageObject(path: string, name: string, buffer: ArrayBuffer): Promise<void> {
-    const decoded = await decodeForPreview(buffer);
+    const decoded = await decodeForPreview(buffer, name);
     // 预览解码会消费 buffer（exifr/blob 均不转移所有权，buffer 仍可用），另存一份原始字节
     if (previewBitmap.value) previewBitmap.value.close();
     imagePath.value = path;
@@ -765,6 +799,10 @@ export const useEditorStore = defineStore('editor', () => {
     Object.assign(params, d);
     params.geometry = d.geometry;
     params.adjust = d.adjust;
+    params.curve = d.curve;
+    params.hsl = d.hsl;
+    params.colorGrade = d.colorGrade;
+    params.effects = d.effects;
     params.lut = d.lut;
     wmSeq++;
     delete params.watermark;
@@ -810,7 +848,7 @@ export const useEditorStore = defineStore('editor', () => {
     // lut
     selectBuiltin, loadExternalCube, setLutStrength, removeLut, syncLutFromParams,
     // geometry
-    rotate90, toggleFlipH, toggleFlipV, setCrop, resetCrop, resetGeometryAll, resetAdjust,
+    rotate90, toggleFlipH, toggleFlipV, setCrop, resetCrop, resetGeometryAll, resetAdjust, resetColorAll,
     // mode / zoom / export / project / batch
     mode, cropAspect, setMode, setCropAspect, zoomBy,
     exportCurrent, saveProjectFile, openProjectFile,

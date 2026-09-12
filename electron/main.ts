@@ -6,6 +6,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { createFileAccessPolicy } from './fileAccess';
+import { mt, mtf, setMainLocale } from './i18n';
 
 // ---------------- 文件访问授权（渲染层只能读写用户手势授权过的位置） ----------------
 const fileAccess = createFileAccessPolicy();
@@ -46,7 +47,7 @@ async function writeUserLutLib(lib: UserLutRecord[]): Promise<void> {
 }
 
 // 单调递增构建号：同版本内容修订时 +1（渲染层远程比对用）
-const APP_BUILD = 1;
+const APP_BUILD = 4;
 // 远程更新清单（jsdelivr 镜像 GitHub，防缓存参数由调用方追加）
 const REMOTE_UPDATE_URL =
   'https://cdn.jsdelivr.net/gh/shiraijikuu/lumedit@main/update.json';
@@ -107,10 +108,10 @@ function setupAutoUpdater(): void {
     dialog
       .showMessageBox({
         type: 'info',
-        title: '更新已下载',
-        message: `新版本 v${info.version} 已下载完成，是否立即重启安装？`,
-        detail: '重启后将自动安装更新，当前未保存的工程请先保存。',
-        buttons: ['稍后重启', '立即重启'],
+        title: mt('updaterTitle'),
+        message: mtf('updaterMsg', { v: info.version }),
+        detail: mt('updaterDetail'),
+        buttons: [mt('later'), mt('restartNow')],
         defaultId: 1,
         cancelId: 0,
       })
@@ -132,7 +133,7 @@ function createWindow(): void {
     minWidth: 1000,
     minHeight: 640,
     backgroundColor: '#141518',
-    title: 'LumEdit 光影轻修',
+    title: mt('winTitle'),
     autoHideMenuBar: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -167,45 +168,45 @@ function sendMenuAction(action: string): void {
 function buildMenu(): Menu {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
-      label: '文件',
+      label: mt('file'),
       submenu: [
-        { label: '打开图片…', accelerator: 'CmdOrCtrl+O', click: () => sendMenuAction('open-image') },
-        { label: '导入 .cube LUT…', click: () => sendMenuAction('open-lut') },
+        { label: mt('openImage'), accelerator: 'CmdOrCtrl+O', click: () => sendMenuAction('open-image') },
+        { label: mt('importLut'), click: () => sendMenuAction('open-lut') },
         { type: 'separator' },
-        { label: '保存工程…', accelerator: 'CmdOrCtrl+S', click: () => sendMenuAction('save-project') },
-        { label: '打开工程…', accelerator: 'CmdOrCtrl+Shift+O', click: () => sendMenuAction('open-project') },
+        { label: mt('saveProject'), accelerator: 'CmdOrCtrl+S', click: () => sendMenuAction('save-project') },
+        { label: mt('openProject'), accelerator: 'CmdOrCtrl+Shift+O', click: () => sendMenuAction('open-project') },
         { type: 'separator' },
-        { label: '导出…', accelerator: 'CmdOrCtrl+E', click: () => sendMenuAction('export') },
+        { label: mt('export'), accelerator: 'CmdOrCtrl+E', click: () => sendMenuAction('export') },
         { type: 'separator' },
-        { role: 'quit', label: '退出' },
+        { role: 'quit', label: mt('quit') },
       ],
     },
     {
-      label: '编辑',
+      label: mt('edit'),
       submenu: [
-        { label: '撤销', accelerator: 'CmdOrCtrl+Z', click: () => sendMenuAction('undo') },
-        { label: '重做', accelerator: 'CmdOrCtrl+Y', click: () => sendMenuAction('redo') },
+        { label: mt('undo'), accelerator: 'CmdOrCtrl+Z', click: () => sendMenuAction('undo') },
+        { label: mt('redo'), accelerator: 'CmdOrCtrl+Y', click: () => sendMenuAction('redo') },
       ],
     },
     {
-      label: '视图',
+      label: mt('view'),
       submenu: [
-        { label: '适应窗口', accelerator: '0', click: () => sendMenuAction('fit-view') },
-        { label: '放大', accelerator: '+=', click: () => sendMenuAction('zoom-in') },
-        { label: '缩小', accelerator: '-', click: () => sendMenuAction('zoom-out') },
+        { label: mt('fit'), accelerator: '0', click: () => sendMenuAction('fit-view') },
+        { label: mt('zoomIn'), accelerator: '+=', click: () => sendMenuAction('zoom-in') },
+        { label: mt('zoomOut'), accelerator: '-', click: () => sendMenuAction('zoom-out') },
         // 开发者工具不在菜单暴露；保留 Electron 默认快捷键（Ctrl+Shift+I）能力，便于排障
       ],
     },
     {
-      label: '帮助',
+      label: mt('help'),
       submenu: [
-        { label: '检查更新', click: () => sendMenuAction('check-update') },
+        { label: mt('checkUpdate'), click: () => sendMenuAction('check-update') },
         {
-          label: '下载页（浏览器打开）',
+          label: mt('download'),
           click: () => shell.openExternal('https://github.com/shiraijikuu/lumedit/releases/latest'),
         },
         { type: 'separator' },
-        { label: '关于 LumEdit', click: () => sendMenuAction('about') },
+        { label: mt('about'), click: () => sendMenuAction('about') },
       ],
     },
   ];
@@ -213,15 +214,27 @@ function buildMenu(): Menu {
 }
 
 // ---------------- IPC ----------------
-const IMAGE_FILTERS = [
-  { name: '图片', extensions: ['jpg', 'jpeg', 'png', 'webp'] },
+const RAW_EXTENSIONS = [
+  'arw', 'dng', 'nef', 'cr2', 'cr3', 'raf', 'orf', 'rw2', 'pef',
+  'srw', 'mrw', 'erf', 'rwl', 'nrw', 'raw', 'kdc', 'dcr', 'mos', 'iiq', '3fr',
 ];
+// 过滤器名称随当前语言在打开对话框时求值
+function imageFilters(): Electron.FileFilter[] {
+  return [
+    {
+      name: mt('allImages'),
+      extensions: ['jpg', 'jpeg', 'png', 'webp', ...RAW_EXTENSIONS],
+    },
+    { name: mt('rawImages'), extensions: RAW_EXTENSIONS },
+    { name: mt('allFiles'), extensions: ['*'] },
+  ];
+}
 
 function registerIpc(): void {
   ipcMain.handle('dialog:openImages', async (_e, multi: boolean) => {
     const r = await dialog.showOpenDialog(mainWindow!, {
       properties: multi ? ['openFile', 'multiSelections'] : ['openFile'],
-      filters: IMAGE_FILTERS,
+      filters: imageFilters(),
     });
     if (r.canceled) return null;
     for (const p of r.filePaths) fileAccess.grantRead(p);
@@ -239,7 +252,7 @@ function registerIpc(): void {
       properties: ['openFile'],
       filters: [
         { name: '3D LUT', extensions: ['cube'] },
-        { name: '全部文件', extensions: ['*'] },
+        { name: mt('allFiles'), extensions: ['*'] },
       ],
     });
     if (r.canceled || !r.filePaths[0]) return null;
@@ -257,7 +270,7 @@ function registerIpc(): void {
       properties: ['openFile', 'multiSelections'],
       filters: [
         { name: '3D LUT', extensions: ['cube'] },
-        { name: '全部文件', extensions: ['*'] },
+        { name: mt('allFiles'), extensions: ['*'] },
       ],
     });
     if (r.canceled || r.filePaths.length === 0) return null;
@@ -333,7 +346,7 @@ function registerIpc(): void {
 
   ipcMain.handle('fs:readBuffer', async (_e, p: string) => {
     if (!fileAccess.isReadAllowed(p)) {
-      throw new Error(`拒绝读取：${p}\n（仅允许本次会话中用户选择的文件或工程引用的文件）`);
+      throw new Error(mtf('errReadDeny', { v: p }));
     }
     const b = await fs.readFile(p);
     return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
@@ -356,7 +369,7 @@ function registerIpc(): void {
   ipcMain.handle('dialog:saveProject', async (_e, args: { defaultName: string; text: string }) => {
     const r = await dialog.showSaveDialog(mainWindow!, {
       defaultPath: args.defaultName,
-      filters: [{ name: 'LumEdit 工程', extensions: ['lightedit'] }],
+      filters: [{ name: mt('projectFile'), extensions: ['lightedit'] }],
     });
     if (r.canceled || !r.filePath) return null;
     await fs.writeFile(r.filePath, args.text, 'utf-8');
@@ -366,7 +379,7 @@ function registerIpc(): void {
   ipcMain.handle('dialog:openProject', async () => {
     const r = await dialog.showOpenDialog(mainWindow!, {
       properties: ['openFile'],
-      filters: [{ name: 'LumEdit 工程', extensions: ['lightedit', 'json'] }],
+      filters: [{ name: mt('projectFile'), extensions: ['lightedit', 'json'] }],
     });
     if (r.canceled || !r.filePaths[0]) return null;
     const p = r.filePaths[0];
@@ -386,7 +399,7 @@ function registerIpc(): void {
 
   ipcMain.handle('fs:writeFile', async (_e, absPath: string, bytes: ArrayBuffer | Uint8Array) => {
     if (!fileAccess.isWriteAllowed(absPath)) {
-      throw new Error(`拒绝写入：${absPath}\n（仅允许用户选择的输出目录之内）`);
+      throw new Error(mtf('errWriteDeny', { v: absPath }));
     }
     const buf = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
     await fs.mkdir(path.dirname(absPath), { recursive: true });
@@ -395,9 +408,15 @@ function registerIpc(): void {
 
   ipcMain.handle('app:meta', () => ({ version: app.getVersion(), build: APP_BUILD }));
 
+  // 界面语言切换：同步主进程并重建原生菜单
+  ipcMain.handle('app:setLocale', (_e, locale: 'zh-CN' | 'en') => {
+    setMainLocale(locale);
+    Menu.setApplicationMenu(buildMenu());
+  });
+
   ipcMain.handle('shell:openExternal', (_e, url: string) => {
     if (!isSafeExternalUrl(url)) {
-      return Promise.reject(new Error(`拒绝打开非 http(s) 链接：${String(url)}`));
+      return Promise.reject(new Error(mtf('errProto', { v: String(url) })));
     }
     return shell.openExternal(url);
   });
@@ -440,7 +459,7 @@ function registerIpc(): void {
       parent: mainWindow ?? undefined,
       modal: true,
       backgroundColor: '#0b0c0f',
-      title: '水印工作室 · camera-watermark',
+      title: mt('studioTitle'),
       autoHideMenuBar: true,
       webPreferences: CWM_WP,
     });
@@ -495,7 +514,7 @@ function registerIpc(): void {
           if (composeJobs.has(wcId)) {
             composeJobs.delete(wcId);
             if (!win.isDestroyed()) win.destroy();
-            reject(new Error('水印全分辨率合成超时'));
+            reject(new Error(mt('errWmTimeout')));
           }
         }, 120000);
         composeJobs.set(wcId, {
@@ -507,7 +526,7 @@ function registerIpc(): void {
         win.webContents.on('render-process-gone', () => {
           clearTimeout(timer);
           composeJobs.delete(wcId);
-          reject(new Error('合成窗口崩溃'));
+          reject(new Error(mt('errWmCrash')));
         });
         const target = studioUrl(process.env.VITE_DEV_SERVER_URL, 'studio.html');
         (target.url ? win.loadURL(target.url) : win.loadFile(target.file!)).catch(reject);

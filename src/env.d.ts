@@ -10,6 +10,8 @@ export interface CwmStudioInit {
   origBuffer?: ArrayBuffer | null;
   fileName: string;
   mime?: string;
+  /** LumEdit 已解析好的 EXIF；RAW 等原文件无法二次解码时由工作室直接使用 */
+  meta?: Record<string, unknown> | null;
   /** 上次应用保存的 camera-watermark state（可选） */
   savedState?: Record<string, unknown> | null;
 }
@@ -79,6 +81,7 @@ export interface LumeditAPI {
   pickDir: () => Promise<string | null>;
   writeFile: (absPath: string, buffer: ArrayBuffer | Uint8Array) => Promise<void>;
   appMeta: () => Promise<{ version: string; build: number }>;
+  setLocale: (locale: 'zh-CN' | 'en') => Promise<void>;
   openExternal: (url: string) => Promise<void>;
   checkAutoUpdater: () => Promise<{ ok: boolean; error?: string }>;
   installUpdate: () => Promise<void>;
@@ -109,6 +112,8 @@ export interface LumeditAPI {
 }
 
 declare global {
+  // 编译期档位：'basic'（仅第一档）| 'full'（第一档+第二档），由 vite define 注入
+  const __APP_TIER__: 'basic' | 'full';
   interface Window {
     api: LumeditAPI;
   }

@@ -26,7 +26,7 @@
       @keydown.esc.prevent="cancel"
       @blur="commit"
     />
-    <button v-else type="button" class="val val-btn" :title="`点击直接输入（${min} ~ ${max}），双击滑块复位`" @click="startEdit">
+    <button v-else type="button" class="val val-btn" :title="t('slider.valTitle', { min, max })" @click="startEdit">
       {{ display }}
     </button>
   </div>
@@ -34,6 +34,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue';
+import { t } from '@/i18n';
 
 const props = defineProps<{
   label: string;

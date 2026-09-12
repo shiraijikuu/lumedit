@@ -15,6 +15,20 @@ import { serializeProject, parseProject } from '../../src/core/project/projectFi
 import { compareSemver, resolveDownloadUrl } from '../../src/core/update/updateService';
 import { createFileAccessPolicy } from '../../electron/fileAccess';
 import kodakCube from '../../src/assets/luts/kodak-2383.cube';
+import {
+  isRawFileName,
+  detectRawKind,
+  extractLargestEmbeddedJpeg,
+} from '../../src/core/image/rawExtractor';
+import { applyOrientation, buildCwmMeta, decodeForPreview } from '../../src/core/image/imageLoader';
+import { evalCurve, bakeCurveLut, isIdentityCurve, CURVE_LUT_SIZE } from '../../src/core/render/curveLut';
+import { CurveStage } from '../../src/core/render/stages/CurveStage';
+import { HslStage } from '../../src/core/render/stages/HslStage';
+import { ColorGradeStage } from '../../src/core/render/stages/ColorGradeStage';
+import { EffectsStage } from '../../src/core/render/stages/EffectsStage';
+import { ensureParams, cloneParams, linearCurve, HSL_HUES } from '../../src/types/EditParams';
+import zhDict from '../../src/i18n/locales/zh-CN';
+import enDict from '../../src/i18n/locales/en';
 
 let passed = 0;
 let failed = 0;
@@ -472,6 +486,159 @@ function testSecurityPolicy(): void {
   ok('清单 URL：缺省回退', resolveDownloadUrl(undefined) === LATEST);
 }
 
+// ---------- 8. RAW 内嵌 JPEG 提取 ----------
+async function noiseJpeg(size: number): Promise<Uint8Array> {
+  const c = new OffscreenCanvas(size, size);
+  const ctx = c.getContext('2d')!;
+  const img = ctx.createImageData(size, size);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = (Math.random() * 255) | 0;
+    img.data[i] = v;
+    img.data[i + 1] = (v + 37) & 255;
+    img.data[i + 2] = (255 - v) & 255;
+    img.data[i + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  const blob = await c.convertToBlob({ type: 'image/jpeg', quality: 0.95 });
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+async function testRaw(): Promise<void> {
+  logs.push('[raw extractor]');
+  ok('RAW 扩展名：ARW 命中', isRawFileName('photo.ARW'));
+  ok('RAW 扩展名：dng 小写命中', isRawFileName('a.dng'));
+  ok('RAW 扩展名：jpg 不命中', !isRawFileName('a.jpg'));
+  ok('RAW 扩展名：空值安全', !isRawFileName(null));
+
+  const tiffHead = new Uint8Array(16);
+  tiffHead.set([0x49, 0x49, 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00]);
+  ok('detectRawKind：II* 识别为 tiff', detectRawKind(tiffHead) === 'tiff');
+  const fujifilm = new Uint8Array(16);
+  new TextEncoder().encodeInto('FUJIFILMCCD-RAW ', fujifilm);
+  ok('detectRawKind：FUJIFILM 识别为 fuji-raf', detectRawKind(fujifilm) === 'fuji-raf');
+  ok('detectRawKind：普通 JPEG 头返回 null', detectRawKind(new Uint8Array([0xff, 0xd8, 0xff, 0xe0].concat(new Array(12).fill(0)))) === null);
+
+  const small = await noiseJpeg(96);
+  const big = await noiseJpeg(320);
+  ok('合成内嵌 JPEG 均达到 4096B 门槛', small.length >= 4096 && big.length > small.length);
+  const pad = new Uint8Array(200).fill(0x11);
+  const container = new Uint8Array(tiffHead.length + pad.length + small.length + pad.length + big.length);
+  let o = 0;
+  container.set(tiffHead, o); o += tiffHead.length;
+  container.set(pad, o); o += pad.length;
+  container.set(small, o); o += small.length;
+  container.set(pad, o); o += pad.length;
+  container.set(big, o);
+  const picked = extractLargestEmbeddedJpeg(container);
+  ok('提取结果非空', picked !== null);
+  ok('选最大内嵌 JPEG（长度等于大图）', !!picked && picked.length === big.length);
+  ok('提取 JPEG 以 SOI(FFD8) 开头', !!picked && picked[0] === 0xff && picked[1] === 0xd8);
+  ok('提取 JPEG 以 EOI(FFD9) 结尾', !!picked && picked[picked.length - 2] === 0xff && picked[picked.length - 1] === 0xd9);
+  ok('无内嵌 JPEG 时返回 null', extractLargestEmbeddedJpeg(new Uint8Array(8192).fill(0x11)) === null);
+  const rotated = await applyOrientation(await solidBitmap(40, 30, [0.5, 0.5, 0.5]), 8);
+  ok('Orientation 8 将横图转正为竖图', rotated.width === 30 && rotated.height === 40, `got ${rotated.width}x${rotated.height}`);
+  rotated.close();
+  const cwmMeta = buildCwmMeta({ Make: 'SONY', Model: 'ILCE-7CM2', FNumber: 2.8, ExposureTime: 1 / 200, ISO: 100, FocalLength: 35, latitude: 31.2, longitude: 121.5 });
+  ok('RAW EXIF → 水印工作室 Make/Model', cwmMeta.Make === 'SONY' && cwmMeta.Model === 'ILCE-7CM2');
+  ok('RAW EXIF → 水印工作室曝光字段与 GPS 方向', cwmMeta.FNumber === 2.8 && cwmMeta.ISO === 100 && cwmMeta.GPSLatitudeRef === 'N' && cwmMeta.GPSLongitudeRef === 'E');
+
+  // Electron 端到端：合成 RAW（TIFF 头 + 内嵌 JPEG）走完整预览解码
+  const dec = await decodeForPreview(container.buffer as ArrayBuffer, 'fake.ARW');
+  ok('RAW 预览解码：sourceFormat=raw', dec.meta.sourceFormat === 'raw');
+  ok('RAW 预览解码：回落 format=jpeg', dec.meta.format === 'jpeg');
+  ok('RAW 预览解码：取最大内嵌图尺寸 320', dec.bitmap.width === 320 && dec.bitmap.height === 320,
+    `got ${dec.bitmap.width}x${dec.bitmap.height}`);
+  dec.bitmap.close();
+}
+
+// ---------- 9. 色调曲线 LUT ----------
+function testCurveLut(): void {
+  logs.push('[curve lut]');
+  const linear = { master: linearCurve(), red: linearCurve(), green: linearCurve(), blue: linearCurve() };
+  ok('默认四点线性判定为 identity', isIdentityCurve(linear));
+  ok('evalCurve：线性中点≈0.5', Math.abs(evalCurve(linear.master, 0.5) - 0.5) < 1e-6);
+  ok('evalCurve：端点钳制', evalCurve(linear.master, -1) === 0 && evalCurve(linear.master, 2) === 1);
+  const lifted = { ...linear, master: [{ x: 0, y: 0.2 }, { x: 1, y: 1 }] };
+  ok('调整后非 identity', !isIdentityCurve(lifted));
+  ok('evalCurve：抬升黑场插值', Math.abs(evalCurve(lifted.master, 0) - 0.2) < 1e-6);
+  const lut = bakeCurveLut(linear);
+  ok('烘焙 LUT 长度 = 256*4', lut.length === CURVE_LUT_SIZE * 4);
+  // 线性时主曲线 R 通道输出≈输入索引
+  let maxErr = 0;
+  for (let i = 0; i < CURVE_LUT_SIZE; i++) maxErr = Math.max(maxErr, Math.abs(lut[i * 4] - i));
+  ok('线性烘焙 R 通道误差≤1（舍入）', maxErr <= 1);
+}
+
+// ---------- 10. 参数模型向前兼容 ----------
+function testEnsureParams(): void {
+  logs.push('[EditParams ensure/clone]');
+  // 模拟 0.1.x 旧工程：只有 geometry/adjust(旧5项)/lut
+  const legacy = {
+    geometry: JSON.parse(JSON.stringify(defaultEditParams.geometry)),
+    adjust: { brightness: 0.1, contrast: 0, saturation: 0, exposure: 0, temperature: 0 },
+    lut: JSON.parse(JSON.stringify(defaultEditParams.lut)),
+  } as unknown as Partial<EditParams>;
+  const p = ensureParams(legacy);
+  ok('ensure 补齐 curve', !!p.curve && Array.isArray(p.curve.master));
+  ok('ensure 补齐 hsl 且 8 色齐全', !!p.hsl && HSL_HUES.every((h) => 'hue' in p.hsl[h]));
+  ok('ensure 补齐 colorGrade', !!p.colorGrade && 'shadows' in p.colorGrade);
+  ok('ensure 补齐 effects', !!p.effects && 'vignette' in p.effects);
+  ok('ensure 保留旧字段值', Math.abs(p.adjust.brightness - 0.1) < 1e-9);
+  const c = cloneParams(p);
+  c.adjust.exposure = 1.5;
+  c.hsl.red.hue = 0.9;
+  ok('cloneParams 深拷贝：改副本不影响原', p.adjust.exposure !== 1.5 && p.hsl.red.hue !== 0.9);
+  ok('ensureParams(null) 安全返回默认', !!ensureParams(null).geometry);
+}
+
+// ---------- 11. 中英文词典 key 对齐 ----------
+function collectKeys(obj: Record<string, unknown>, prefix = '', out: string[] = []): string[] {
+  for (const [k, v] of Object.entries(obj)) {
+    const path = prefix ? `${prefix}.${k}` : k;
+    if (v && typeof v === 'object') collectKeys(v as Record<string, unknown>, path, out);
+    else out.push(path);
+  }
+  return out;
+}
+function testI18nParity(): void {
+  logs.push('[i18n zh/en parity]');
+  const zhKeys = collectKeys(zhDict as Record<string, unknown>).sort();
+  const enKeys = collectKeys(enDict as Record<string, unknown>).sort();
+  ok('中英文词条数量一致', zhKeys.length === enKeys.length, `zh=${zhKeys.length} en=${enKeys.length}`);
+  const missingInEn = zhKeys.filter((k) => !enKeys.includes(k));
+  const extraInEn = enKeys.filter((k) => !zhKeys.includes(k));
+  ok('英文无缺失 key', missingInEn.length === 0, missingInEn.join(','));
+  ok('英文无多余 key', extraInEn.length === 0, extraInEn.join(','));
+  const hasEmpty = enKeys.some((k) => {
+    const v = k.split('.').reduce<unknown>((o, seg) => (o as Record<string, unknown>)?.[seg], enDict as unknown);
+    return typeof v !== 'string' || v.trim() === '';
+  });
+  ok('英文词条无空值', !hasEmpty);
+}
+
+// ---------- 12. 第二档 Stage 中性参数直通（GPU） ----------
+async function testNewStagesNeutral(): Promise<void> {
+  logs.push('[new stages neutral passthrough]');
+  const gl = createGL();
+  const bmp = await solidBitmap(64, 64, [0.5, 0.4, 0.3]);
+  const input = uploadTexture(gl, bmp);
+  const ctx: RenderContext = { gl, width: 64, height: 64 };
+  const p = params();
+  const stages = [new CurveStage(), new HslStage(), new ColorGradeStage(), new EffectsStage()];
+  const src = readPixel(gl, input, 64, 64);
+  for (const s of stages) {
+    const out = s.execute(input, p, ctx);
+    ok(`${s.name} 中性参数返回纹理`, !!out);
+    const dst = readPixel(gl, out, 64, 64);
+    const d = Math.max(Math.abs(dst[0] - src[0]), Math.abs(dst[1] - src[1]), Math.abs(dst[2] - src[2]));
+    ok(`${s.name} 中性参数不改色（差≤8）`, d <= 8, `d=${d}`);
+    if (out !== input) gl.deleteTexture(out);
+    s.destroy();
+  }
+  gl.deleteTexture(input);
+  bmp.close();
+}
+
 async function main(): Promise<void> {
   const logEl = document.getElementById('log');
   const write = (t: string) => {
@@ -486,6 +653,11 @@ async function main(): Promise<void> {
     testProject();
     testSemver();
     testSecurityPolicy();
+    await testRaw();
+    testCurveLut();
+    testEnsureParams();
+    testI18nParity();
+    await testNewStagesNeutral();
   } catch (err) {
     failed++;
     write(`FATAL: ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
