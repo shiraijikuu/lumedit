@@ -15,6 +15,7 @@ import { serializeProject, parseProject } from '../../src/core/project/projectFi
 import { compareSemver, resolveDownloadUrl } from '../../src/core/update/updateService';
 import { createFileAccessPolicy } from '../../electron/fileAccess';
 import { TexturePool } from '../../src/core/render/texturePool';
+import { bakeLutFromParams } from '../../src/core/render/lut/bakeCurrentLut';
 import kodakCube from '../../src/assets/luts/kodak-2383.cube';
 import {
   isRawFileName,
@@ -667,6 +668,33 @@ function testTexturePool(): void {
   pool.dispose();
 }
 
+// ---------- 10. LUT 烘焙（GPU） ----------
+async function testLutBake(): Promise<void> {
+  logs.push('[lut bake]');
+  const text = await bakeLutFromParams(JSON.parse(JSON.stringify(defaultEditParams)));
+  ok('identity 烘焙含 LUT_3D_SIZE 17', text.includes('LUT_3D_SIZE 17'));
+  const lines = text.trim().split(/\r?\n/).slice(4);
+  ok('数据行数 = 17³', lines.length === 17 ** 3, `n=${lines.length}`);
+  let maxErr = 0;
+  let idx = 0;
+  for (let b = 0; b < 17; b++) {
+    for (let g = 0; g < 17; g++) {
+      for (let r = 0; r < 17; r++) {
+        const v = lines[idx++].split(/\s+/).map(Number);
+        maxErr = Math.max(maxErr, Math.abs(v[0] - r / 16), Math.abs(v[1] - g / 16), Math.abs(v[2] - b / 16));
+      }
+    }
+  }
+  ok('identity 烘焙逐点误差 ≤ 0.02', maxErr <= 0.02, `maxErr=${maxErr}`);
+
+  const p2 = JSON.parse(JSON.stringify(defaultEditParams));
+  p2.adjust.exposure = 1;
+  const text2 = await bakeLutFromParams(p2);
+  const l2 = text2.trim().split(/\r?\n/).slice(4);
+  const mid = l2[(8 * 17 * 17) + (8 * 17) + 8].split(/\s+/).map(Number);
+  ok('曝光 +1 烘焙中点变亮（≈1.0）', mid[0] > 0.9, `v=${mid[0]}`);
+}
+
 async function main(): Promise<void> {
   const logEl = document.getElementById('log');
   const write = (t: string) => {
@@ -682,6 +710,7 @@ async function main(): Promise<void> {
     testSemver();
     testSecurityPolicy();
     testTexturePool();
+    await testLutBake();
     await testRaw();
     testCurveLut();
     testEnsureParams();

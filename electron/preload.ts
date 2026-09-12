@@ -31,6 +31,8 @@ const api = {
   ) => ipcRenderer.invoke('dialog:saveBuffer', { defaultName, filters, bytes }),
   saveProject: (defaultName: string, text: string) =>
     ipcRenderer.invoke('dialog:saveProject', { defaultName, text }),
+  saveText: (defaultName: string, filters: { name: string; extensions: string[] }[], text: string) =>
+    ipcRenderer.invoke('dialog:saveText', { defaultName, filters, text }),
   openProject: () => ipcRenderer.invoke('dialog:openProject'),
   pickDir: () => ipcRenderer.invoke('dialog:pickDir'),
   writeFile: (absPath: string, bytes: ArrayBuffer | Uint8Array) =>

@@ -21,6 +21,7 @@ import { cubeToLutData, parseCube } from '@/core/render/lut/cubeParser';
 import { lutManager, type BuiltinLutInfo } from '@/core/render/lut/lutManager';
 import type { LutData } from '@/core/render/lut/lutTypes';
 import type { EditParams } from '@/types/EditParams';
+import { bakeLutFromParams } from '@/core/render/lut/bakeCurrentLut';
 import { t } from '@/i18n';
 
 /** camera-watermark「应用」回传（与 env.d.ts 的 CwmApplyResult 同构） */
@@ -688,6 +689,21 @@ export const useEditorStore = defineStore('editor', () => {
     }
   }
 
+  /** 当前调色（逐像素部分）GPU 烘焙为 .cube LUT 并保存 */
+  async function exportLutCube(): Promise<void> {
+    try {
+      const text = await bakeLutFromParams(params);
+      const saved = await window.api.saveText(
+        `lumedit-${Date.now()}.cube`,
+        [{ name: '3D LUT', extensions: ['cube'] }],
+        text
+      );
+      if (saved) toast('success', t('lut.exported'));
+    } catch (err) {
+      toast('error', t('msg.exportFail', { v: err instanceof Error ? err.message : String(err) }));
+    }
+  }
+
   /** 修好的图直接写入系统剪贴板（PNG 无损，含水印），贴进微信/文档即用 */
   async function copyToClipboard(): Promise<boolean> {
     if (!sourceBuffer.value || !meta.value) {
@@ -882,8 +898,8 @@ export const useEditorStore = defineStore('editor', () => {
     setShowOriginal, resetView,
     // lut
     selectBuiltin, loadExternalCube, setLutStrength, removeLut, syncLutFromParams,
-    // presets / clipboard / copy-paste
-    applyPreset, copyToClipboard, copyEdits, pasteEdits,
+    // presets / clipboard / copy-paste / lut-export
+    applyPreset, copyToClipboard, copyEdits, pasteEdits, exportLutCube,
     // geometry
     rotate90, toggleFlipH, toggleFlipV, setCrop, resetCrop, resetGeometryAll, resetAdjust, resetColorAll,
     // picker / split / clip / mode / zoom / export / project

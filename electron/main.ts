@@ -423,6 +423,20 @@ function registerIpc(): void {
     }
   );
 
+  // 通用文本保存（如导出 .cube LUT）
+  ipcMain.handle(
+    'dialog:saveText',
+    async (_e, args: { defaultName: string; filters: Electron.FileFilter[]; text: string }) => {
+      const r = await dialog.showSaveDialog(mainWindow!, {
+        defaultPath: args.defaultName,
+        filters: args.filters,
+      });
+      if (r.canceled || !r.filePath) return null;
+      await fs.writeFile(r.filePath, args.text, 'utf-8');
+      return r.filePath;
+    }
+  );
+
   ipcMain.handle('dialog:saveProject', async (_e, args: { defaultName: string; text: string }) => {
     const r = await dialog.showSaveDialog(mainWindow!, {
       defaultPath: args.defaultName,

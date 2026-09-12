@@ -125,6 +125,8 @@ export  default {
     hint: '双击滑块数值可复位单项；曲线双击节点删除',
   },
   lut: {
+    exportLut: '当前调色导出为 LUT',
+    exported: 'LUT 已导出',
     scene: '场景 LUT',
     mine: '我的 LUT',
     loading: '加载中…',

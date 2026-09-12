@@ -83,6 +83,7 @@ export interface LumeditAPI {
     buffer: ArrayBuffer | Uint8Array
   ) => Promise<string | null>;
   saveProject: (defaultName: string, json: string) => Promise<string | null>;
+  saveText: (defaultName: string, filters: { name: string; extensions: string[] }[], text: string) => Promise<string | null>;
   openProject: () => Promise<{ path: string; text: string } | null>;
   pickDir: () => Promise<string | null>;
   writeFile: (absPath: string, buffer: ArrayBuffer | Uint8Array) => Promise<void>;

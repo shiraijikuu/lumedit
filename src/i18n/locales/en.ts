@@ -125,6 +125,8 @@ export  default {
     hint: 'Double-click a value to reset; double-click a curve point to remove',
   },
   lut: {
+    exportLut: 'Export current grading as LUT',
+    exported: 'LUT exported',
     scene: 'Scene LUTs',
     mine: 'My LUTs',
     loading: 'Loading…',

@@ -74,6 +74,7 @@
       </div>
 
       <!-- 一次性临时导入（不入库） -->
+      <button class="ghost text-btn" @click="store.exportLutCube()">{{ t('lut.exportLut') }}</button>
       <button class="ghost text-btn" @click="store.loadExternalCube()">
         {{ t('lut.tempOpen') }}
       </button>
