@@ -46,7 +46,7 @@
 
       <CollapseSection :default-open="false">
         <template #title>
-          {{ t('adjust.hsl') }}
+          {{ t('adjust.hsl') }}<span class="pro-badge">{{ t('adjust.proBadge') }}</span>
         </template>
         <template #actions>
           <button type="button" class="ghost mini" @click="resetHsl">{{ t('common.reset') }}</button>
@@ -56,7 +56,7 @@
 
       <CollapseSection :default-open="false">
         <template #title>
-          {{ t('adjust.grade') }}
+          {{ t('adjust.grade') }}<span class="pro-badge">{{ t('adjust.proBadge') }}</span>
         </template>
         <template #actions>
           <button type="button" class="ghost mini" @click="resetGrade">{{ t('common.reset') }}</button>
@@ -74,7 +74,7 @@
 
       <CollapseSection :default-open="false">
         <template #title>
-          {{ t('adjust.effects') }}
+          {{ t('adjust.effects') }}<span class="pro-badge">{{ t('adjust.proBadge') }}</span>
         </template>
         <template #actions>
           <button type="button" class="ghost mini" @click="resetEffects">{{ t('common.reset') }}</button>
@@ -237,5 +237,16 @@ button.mini {
   font-size: 11px;
   color: var(--txt-2);
   line-height: 1.5;
+}
+.pro-badge {
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: #7db8ff;
+  background: var(--accent-soft);
+  border-radius: 5px;
+  text-transform: none;
 }
 </style>

@@ -84,6 +84,7 @@ export  default {
     presence: '偏好',
     curve: '色调曲线',
     hsl: '混色器',
+    proBadge: '专业',
     grade: '颜色分级',
     effects: '效果',
     exposure: '曝光',

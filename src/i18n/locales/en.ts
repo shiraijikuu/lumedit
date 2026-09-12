@@ -84,6 +84,7 @@ export  default {
     presence: 'Presence',
     curve: 'Tone Curve',
     hsl: 'Color Mixer',
+    proBadge: 'Pro',
     grade: 'Color Grading',
     effects: 'Effects',
     exposure: 'Exposure',
