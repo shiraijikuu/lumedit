@@ -165,7 +165,31 @@ function sendMenuAction(action: string): void {
   mainWindow?.webContents.send('menu:action', action);
 }
 
-function buildMenu(): Menu {
+  // ---------------- 会话恢复 / 最近打开（userData，主进程直管） ----------------
+
+interface RecentItem {
+  path: string;
+  name: string;
+  at: number;
+}
+
+function recentFile(): string {
+  return path.join(app.getPath('userData'), 'recent.json');
+}
+async function readRecent(): Promise<RecentItem[]> {
+  try {
+    const arr = JSON.parse(await fs.readFile(recentFile(), 'utf-8'));
+    return Array.isArray(arr) ? (arr as RecentItem[]) : [];
+  } catch {
+    return [];
+  }
+}
+async function writeRecent(list: RecentItem[]): Promise<void> {
+  await fs.writeFile(recentFile(), JSON.stringify(list, null, 2), 'utf-8');
+}
+
+
+function buildMenu(recent: { path: string; name: string }[] = []): Menu {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
       label: mt('file'),
@@ -175,6 +199,17 @@ function buildMenu(): Menu {
         { type: 'separator' },
         { label: mt('saveProject'), accelerator: 'CmdOrCtrl+S', click: () => sendMenuAction('save-project') },
         { label: mt('openProject'), accelerator: 'CmdOrCtrl+Shift+O', click: () => sendMenuAction('open-project') },
+        ...(recent.length
+          ? [
+              {
+                label: mt('recentOpen'),
+                submenu: recent.slice(0, 10).map((r, i) => ({
+                  label: r.name.length > 46 ? r.name.slice(0, 46) + '…' : r.name,
+                  click: () => sendMenuAction('recent:' + i),
+                })),
+              },
+            ]
+          : []),
         { type: 'separator' },
         { label: mt('export'), accelerator: 'CmdOrCtrl+E', click: () => sendMenuAction('export') },
         { type: 'separator' },
@@ -342,6 +377,62 @@ function registerIpc(): void {
       await writeUserLutLib(lib);
     }
     return lib;
+  });
+
+  ipcMain.handle('recent:list', () => readRecent());
+
+  ipcMain.handle('recent:push', async (_e, p: string, name: string) => {
+    let list: RecentItem[] = [];
+    if (typeof p === 'string' && p) {
+      list = await readRecent();
+      const filtered = list.filter((x) => x.path !== p);
+      filtered.unshift({ path: p, name: typeof name === 'string' ? name : path.basename(p), at: Date.now() });
+      list = filtered.slice(0, 10);
+      await writeRecent(list);
+    }
+    Menu.setApplicationMenu(buildMenu(list));
+    return list;
+  });
+
+  // 用户点「最近打开」菜单 = 用户手势：主进程直接读文件并授予会话读权限
+  ipcMain.handle('recent:open', async (_e, index: number) => {
+    const list = await readRecent();
+    const item = list[index];
+    if (!item) return null;
+    const buf = await fs.readFile(item.path);
+    fileAccess.grantRead(item.path);
+    return { path: item.path, name: item.name, buffer: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) };
+  });
+
+  function sessionFile(): string {
+    return path.join(app.getPath('userData'), 'session.json');
+  }
+  ipcMain.handle('session:save', async (_e, payload: unknown) => {
+    if (payload && typeof payload === 'object') {
+      await fs.writeFile(sessionFile(), JSON.stringify(payload), 'utf-8');
+    }
+  });
+  ipcMain.handle('session:load', async () => {
+    try {
+      const data = JSON.parse(await fs.readFile(sessionFile(), 'utf-8')) as {
+        imagePath?: string;
+        imageName?: string;
+        params?: unknown;
+      };
+      if (typeof data.imagePath === 'string' && data.imagePath) {
+        const buf = await fs.readFile(data.imagePath);
+        fileAccess.grantRead(data.imagePath);
+        return {
+          path: data.imagePath,
+          name: data.imageName ?? path.basename(data.imagePath),
+          buffer: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+          params: data.params ?? null,
+        };
+      }
+    } catch {
+      /* 无会话/文件丢失：静默 */
+    }
+    return null;
   });
 
   // ---------------- 调色预设（userData/presets.json，主进程直管，无需路径授权） ----------------
@@ -628,10 +719,11 @@ if (!gotLock) {
     }
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     setupAutoUpdater();
     registerIpc();
-    Menu.setApplicationMenu(buildMenu());
+    const recent = await readRecent().catch(() => []);
+    Menu.setApplicationMenu(buildMenu(recent));
     createWindow();
     // 启动 5 秒后后台检查语义版本更新（不抢启动资源）
     setTimeout(() => {

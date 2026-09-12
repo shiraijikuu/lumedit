@@ -20,6 +20,17 @@ const api = {
     save: (name: string, params: unknown) => ipcRenderer.invoke('presets:save', name, params),
     remove: (id: string) => ipcRenderer.invoke('presets:delete', id),
   },
+  // 会话恢复 / 最近打开
+  session: {
+    load: () => ipcRenderer.invoke('session:load'),
+    save: (payload: { imagePath: string; imageName: string; params: unknown }) =>
+      ipcRenderer.invoke('session:save', payload),
+  },
+  recent: {
+    list: () => ipcRenderer.invoke('recent:list'),
+    push: (path: string, name: string) => ipcRenderer.invoke('recent:push', path, name),
+    open: (index: number) => ipcRenderer.invoke('recent:open', index),
+  },
   // 剪贴板：把导出位图写入系统剪贴板
   writeClipboardImage: (bytes: ArrayBuffer | Uint8Array) =>
     ipcRenderer.invoke('clipboard:writeImage', bytes),

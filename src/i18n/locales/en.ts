@@ -212,6 +212,8 @@ export  default {
   msg: {
     exifFail: 'Failed to read EXIF',
     presetFail: 'Preset operation failed: {v}',
+    sessionRestored: 'Last session restored',
+    sessionCap: 'Session keeps at most {v} images — the oldest was dropped',
     lutBuiltinFail: 'Built-in LUT failed to load: {v}',
     lutFileFail: 'LUT file cannot be loaded:\n{v}',
     lutRemoved: 'This LUT has been removed from the library',
@@ -253,6 +255,9 @@ export  default {
     gps: 'GPS coords',
   },
 
+  filmstrip: {
+    remove: '从会话移除',
+  },
   slider: {
     valTitle: 'Click to type a value ({min} ~ {max}), double-click to reset',
   },

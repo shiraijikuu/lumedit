@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { toast } from './toast';
+import { watch } from 'vue';
 import { computed, reactive, ref, shallowRef } from 'vue';
 import {
   cloneParams,
@@ -594,6 +595,74 @@ export const useEditorStore = defineStore('editor', () => {
   });
   const exporting = ref(false);
 
+  // ---------- 图片会话条 / 最近打开 / 会话恢复 ----------
+  interface SessionImage { path: string; name: string; buffer: ArrayBuffer; thumb: string; params: EditParams | null; }
+  const sessionImages = ref<SessionImage[]>([]);
+  const SESSION_CAP = 20;
+  let sessionCapWarned = false;
+  let sessionSaveTimer: number | null = null;
+
+  async function makeThumb(bmp: ImageBitmap): Promise<string> {
+    const k = Math.min(1, 96 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(bmp.width * k));
+    c.height = Math.max(1, Math.round(bmp.height * k));
+    c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.7);
+  }
+
+  function scheduleSessionSave(): void {
+    if (sessionSaveTimer !== null) window.clearTimeout(sessionSaveTimer);
+    sessionSaveTimer = window.setTimeout(() => {
+      void saveSessionNow();
+    }, 2000);
+  }
+
+  async function saveSessionNow(): Promise<void> {
+    if (!hasImage.value || !imagePath.value) return;
+    try {
+      await window.api.session.save({
+        imagePath: imagePath.value,
+        imageName: imageName.value,
+        params: cloneParams(params),
+      });
+    } catch {
+      /* 会话保存失败静默 */
+    }
+  }
+
+  async function restoreSession(): Promise<void> {
+    try {
+      const data = await window.api.session.load();
+      if (!data) return;
+      await loadImageObject(data.path, data.name, data.buffer);
+      if (data.params) {
+        const p = ensureParams(data.params as Partial<EditParams>);
+        params.geometry = p.geometry;
+        params.adjust = p.adjust;
+        params.curve = p.curve;
+        params.hsl = p.hsl;
+        params.colorGrade = p.colorGrade;
+        params.effects = p.effects;
+        params.lut = p.lut;
+        await syncLutFromParams();
+        scheduleWmPreview();
+      }
+      toast('info', t('msg.sessionRestored'));
+    } catch {
+      /* 恢复失败静默 */
+    }
+  }
+
+  async function openRecent(index: number): Promise<void> {
+    try {
+      const data = await window.api.recent.open(index);
+      if (data) await loadImageObject(data.path, data.name, data.buffer);
+    } catch (err) {
+      toast('error', t('msg.exportFail', { v: err instanceof Error ? err.message : String(err) }));
+    }
+  }
+
   // ---------- 白平衡吸管 ----------
   const pickerActive = ref(false);
   function togglePicker(): void {
@@ -836,6 +905,35 @@ export const useEditorStore = defineStore('editor', () => {
     previewBitmap.value = decoded.bitmap;
     resetParamsInternal();
     resetView();
+    // 会话条 / 最近打开 / 会话保存
+    void (async () => {
+      try {
+        if (!previewBitmap.value) return;
+        const thumb = await makeThumb(previewBitmap.value);
+        const existing = sessionImages.value.findIndex((x) => x.path === path);
+        if (existing >= 0) {
+          const it = sessionImages.value[existing];
+          it.buffer = buffer;
+          it.name = name;
+          it.thumb = thumb;
+        } else {
+          if (sessionImages.value.length >= SESSION_CAP) {
+            sessionImages.value.shift();
+            if (!sessionCapWarned) {
+              sessionCapWarned = true;
+              toast('info', t('msg.sessionCap', { v: SESSION_CAP }));
+            }
+          }
+          sessionImages.value.push({ path, name, buffer, thumb, params: null });
+        }
+      } catch {
+        /* 缩略图失败不影响主流程 */
+      }
+    })();
+    if (path) {
+      void window.api.recent.push(path, name).catch(() => {});
+      scheduleSessionSave();
+    }
   }
 
   async function openPicker(): Promise<boolean> {
@@ -873,6 +971,40 @@ export const useEditorStore = defineStore('editor', () => {
     await loadImageObject(item.path, item.name, item.buffer.slice(0));
   }
 
+  /** 会话条切换：当前编辑暂存到条目，目标图重新解码并恢复其参数 */
+  async function openSessionImage(index: number): Promise<void> {
+    const target = sessionImages.value[index];
+    if (!target || target.path === imagePath.value) return;
+    const curIdx = sessionImages.value.findIndex((x) => x.path === imagePath.value);
+    if (curIdx >= 0) sessionImages.value[curIdx].params = cloneParams(params);
+    const savedParams = target.params;
+    await loadImageObject(target.path, target.name, target.buffer.slice(0));
+    if (savedParams) {
+      const p = ensureParams(savedParams as Partial<EditParams>);
+      params.geometry = p.geometry;
+      params.adjust = p.adjust;
+      params.curve = p.curve;
+      params.hsl = p.hsl;
+      params.colorGrade = p.colorGrade;
+      params.effects = p.effects;
+      params.lut = p.lut;
+      await syncLutFromParams();
+      scheduleWmPreview();
+    }
+  }
+
+  function removeSessionImage(index: number): void {
+    sessionImages.value.splice(index, 1);
+  }
+
+  watch(
+    params,
+    () => {
+      if (hasImage.value) scheduleSessionSave();
+    },
+    { deep: true }
+  );
+
   function closeImage(): void {
     previewBitmap.value?.close();
     previewBitmap.value = null;
@@ -898,8 +1030,9 @@ export const useEditorStore = defineStore('editor', () => {
     setShowOriginal, resetView,
     // lut
     selectBuiltin, loadExternalCube, setLutStrength, removeLut, syncLutFromParams,
-    // presets / clipboard / copy-paste / lut-export
+    // presets / clipboard / copy-paste / lut-export / session
     applyPreset, copyToClipboard, copyEdits, pasteEdits, exportLutCube,
+    sessionImages, openSessionImage, removeSessionImage, restoreSession, openRecent, saveSessionNow,
     // geometry
     rotate90, toggleFlipH, toggleFlipV, setCrop, resetCrop, resetGeometryAll, resetAdjust, resetColorAll,
     // picker / split / clip / mode / zoom / export / project

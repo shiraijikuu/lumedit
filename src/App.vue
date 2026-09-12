@@ -5,6 +5,7 @@
       <EditorCanvas />
       <RightPanel />
     </main>
+    <FilmStrip v-if="store.sessionImages.length > 1" />
     <StatusBar @check-update="manualCheck" />
     <AboutModal :open="aboutOpen" @close="aboutOpen = false" />
     <ExifModal :open="exifOpen" @close="exifOpen = false" />
@@ -20,6 +21,7 @@ import RightPanel from './components/RightPanel.vue';
 import EditorCanvas from './components/EditorCanvas.vue';
 import AboutModal from './components/AboutModal.vue';
 import ExifModal from './components/ExifModal.vue';
+import FilmStrip from './components/FilmStrip.vue';
 import Toaster from './components/ui/Toaster.vue';
 import { useEditorStore } from './stores/editor';
 import { useUpdate } from './composables/useUpdate';
@@ -100,6 +102,11 @@ function onMenuAction(action: string): void {
     case 'fit-view': store.resetView(); break;
     case 'check-update': manualCheck(); break;
     case 'about': aboutOpen.value = true; break;
+    default:
+      if (action.startsWith('recent:')) {
+        const idx = Number(action.slice(7));
+        if (Number.isInteger(idx)) void store.openRecent(idx);
+      }
   }
 }
 
@@ -131,6 +138,8 @@ onMounted(() => {
   }
   // 启动 5 秒后静默检查更新（对齐 camera-watermark）
   window.setTimeout(() => void checkNow(true), 5000);
+  // 恢复上次编辑会话（图片 + 全部参数）
+  void store.restoreSession();
 });
 
 onUnmounted(() => {

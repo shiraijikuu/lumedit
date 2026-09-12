@@ -212,6 +212,8 @@ export  default {
   msg: {
     exifFail: 'EXIF 读取失败',
     presetFail: '预设操作失败：{v}',
+    sessionRestored: '已恢复上次编辑会话',
+    sessionCap: '会话最多保留 {v} 张，最早的一张已移出',
     lutBuiltinFail: '内置 LUT 加载失败：{v}',
     lutFileFail: 'LUT 文件无法加载：\n{v}',
     lutRemoved: '该 LUT 已从库中移除',
@@ -238,6 +240,9 @@ export  default {
     foundManual: '发现修订版本（build {b}），需要手动下载安装。\n\n{notes}\n\n是否前往下载页？',
     latest: '当前已是最新版本。',
     checkFail: '更新检查失败：{v}',
+  },
+  filmstrip: {
+    remove: '从会话移除',
   },
   slider: {
     valTitle: '点击直接输入（{min} ~ {max}），双击滑块复位',

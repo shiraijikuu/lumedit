@@ -77,6 +77,15 @@ export interface LumeditAPI {
     remove: (id: string) => Promise<{ id: string; name: string; createdAt: number; params: unknown }[]>;
   };
   writeClipboardImage: (bytes: ArrayBuffer | Uint8Array) => Promise<{ ok: boolean }>;
+  session: {
+    load: () => Promise<{ path: string; name: string; buffer: ArrayBuffer; params: unknown } | null>;
+    save: (payload: { imagePath: string; imageName: string; params: unknown }) => Promise<void>;
+  };
+  recent: {
+    list: () => Promise<{ path: string; name: string; at: number }[]>;
+    push: (path: string, name: string) => Promise<{ path: string; name: string; at: number }[]>;
+    open: (index: number) => Promise<{ path: string; name: string; buffer: ArrayBuffer } | null>;
+  };
   saveBuffer: (
     defaultName: string,
     filters: { name: string; extensions: string[] }[],
