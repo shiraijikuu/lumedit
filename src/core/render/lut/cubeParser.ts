@@ -11,7 +11,15 @@ export interface ParsedCube {
 
 export class CubeParseError extends Error {}
 
+// 实用 LUT 尺寸上限：17/33/65/129 覆盖全部常见规格；256³ 解析需数百 MB 内存，拒绝以防恶意文件 DoS
+export const MAX_CUBE_SIZE = 129;
+// 解析前文本体积上限：129³ 的文本约 65MB，更大的先拒绝，避免 split 出千万级行数组
+export const MAX_CUBE_TEXT_LENGTH = 80 * 1024 * 1024;
+
 export function parseCube(text: string): ParsedCube {
+  if (text.length > MAX_CUBE_TEXT_LENGTH) {
+    throw new CubeParseError(`文件过大（${(text.length / 1024 / 1024) | 0}MB，上限 ${MAX_CUBE_TEXT_LENGTH / 1024 / 1024}MB）`);
+  }
   const lines = text.split(/\r?\n/);
   let size = 0;
   const domainMin: [number, number, number] = [0, 0, 0];
@@ -30,8 +38,10 @@ export function parseCube(text: string): ParsedCube {
         break;
       case 'LUT_3D_SIZE':
         size = Number(tokens[1]);
-        if (!Number.isInteger(size) || size < 2 || size > 256) {
-          throw new CubeParseError(`第 ${lineNo} 行：非法 LUT_3D_SIZE "${tokens[1]}"`);
+        if (!Number.isInteger(size) || size < 2 || size > MAX_CUBE_SIZE) {
+          throw new CubeParseError(
+            `第 ${lineNo} 行：非法 LUT_3D_SIZE "${tokens[1]}"（支持 2–${MAX_CUBE_SIZE}）`
+          );
         }
         break;
       case 'LUT_1D_SIZE':
@@ -49,6 +59,9 @@ export function parseCube(text: string): ParsedCube {
         break;
       }
       default: {
+        if (size === 0) {
+          throw new CubeParseError(`第 ${lineNo} 行：数据行出现在 LUT_3D_SIZE 声明之前`);
+        }
         // 数据行：3 个浮点
         if (tokens.length !== 3) {
           throw new CubeParseError(`第 ${lineNo} 行：无法识别的内容 "${raw}"`);
@@ -56,6 +69,10 @@ export function parseCube(text: string): ParsedCube {
         const rgb = tokens.map(Number);
         if (rgb.some((v) => !Number.isFinite(v))) {
           throw new CubeParseError(`第 ${lineNo} 行：数据点包含非法数值`);
+        }
+        // 声明尺寸有限，超量立即失败，防止无界 push
+        if (values.length >= size ** 3 * 3) {
+          throw new CubeParseError(`第 ${lineNo} 行：数据点数量超过 LUT_3D_SIZE ${size} 的声明`);
         }
         values.push(rgb[0], rgb[1], rgb[2]);
       }

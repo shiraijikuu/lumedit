@@ -34,7 +34,7 @@ const api = {
   installUpdate: () => ipcRenderer.invoke('updater:install'),
   fetchRemoteUpdate: () => ipcRenderer.invoke('update:fetchRemote'),
   onUpdaterEvent: (cb: (ev: { type: string; version?: string; percent?: number; message?: string }) => void) => {
-    const handler = (_e: unknown, v: never) => cb(v);
+    const handler = (_e: unknown, v: unknown) => cb(v as Parameters<typeof cb>[0]);
     ipcRenderer.on('updater:event', handler);
     return () => ipcRenderer.removeListener('updater:event', handler);
   },
@@ -60,8 +60,8 @@ const api = {
       width: number;
       height: number;
     }>,
-  onCwmApplied: (cb: (result: never) => void) => {
-    const handler = (_e: unknown, result: never) => cb(result);
+  onCwmApplied: (cb: (result: unknown) => void) => {
+    const handler = (_e: unknown, result: unknown) => cb(result);
     ipcRenderer.on('cwm:applied', handler);
     return () => ipcRenderer.removeListener('cwm:applied', handler);
   },

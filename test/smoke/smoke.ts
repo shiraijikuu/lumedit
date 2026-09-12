@@ -12,7 +12,8 @@ import { injectExif } from '../../src/core/metadata/metadataInject';
 import { sniffFormat, extractTiffBytes } from '../../src/core/metadata/containerFormat';
 import { createStack, pushSnapshot, undo, redo } from '../../src/core/history/history';
 import { serializeProject, parseProject } from '../../src/core/project/projectFile';
-import { compareSemver } from '../../src/core/update/updateService';
+import { compareSemver, resolveDownloadUrl } from '../../src/core/update/updateService';
+import { createFileAccessPolicy } from '../../electron/fileAccess';
 import kodakCube from '../../src/assets/luts/kodak-2383.cube';
 
 let passed = 0;
@@ -114,6 +115,33 @@ function testCubeParser(): void {
     threw = e instanceof CubeParseError;
   }
   ok('损坏 cube（数量不足）抛 CubeParseError', threw);
+
+  // 安全加固：恶意/畸形 cube 必须快速失败
+  let threwOrder = false;
+  try {
+    parseCube('0 0 0\nLUT_3D_SIZE 2');
+  } catch (e) {
+    threwOrder = e instanceof CubeParseError;
+  }
+  ok('数据行在 LUT_3D_SIZE 之前抛错', threwOrder);
+
+  let threwSize = false;
+  try {
+    parseCube('LUT_3D_SIZE 200');
+  } catch (e) {
+    threwSize = e instanceof CubeParseError;
+  }
+  ok('LUT_3D_SIZE 超上限（>129）抛错', threwSize);
+
+  let threwOverflow = false;
+  try {
+    const lines = ['LUT_3D_SIZE 2'];
+    for (let i = 0; i < 12; i++) lines.push('0 0 0'); // 2³=8 点，给 12 行
+    parseCube(lines.join('\n'));
+  } catch (e) {
+    threwOverflow = e instanceof CubeParseError;
+  }
+  ok('数据点超量立即抛错', threwOverflow);
 }
 
 // ---------- 2. GPU 管线 ----------
@@ -395,6 +423,55 @@ function testSemver(): void {
   ok('1.2.0 < 1.2.1', compareSemver('1.2.0', '1.2.1') === -1);
 }
 
+// ---------- 7. 安全策略（文件访问授权 / 更新清单 URL） ----------
+function testSecurityPolicy(): void {
+  logs.push('[security: file access policy]');
+  const p = createFileAccessPolicy();
+  p.grantRead('E:\\photos\\a.jpg');
+  ok('读授权：原始路径允许', p.isReadAllowed('E:\\photos\\a.jpg'));
+  ok('读授权：大小写/分隔符不敏感', p.isReadAllowed('e:/PHOTOS/A.JPG'));
+  ok('读授权：同目录兄弟文件拒绝', !p.isReadAllowed('E:\\photos\\b.jpg'));
+  ok('读授权：未授权绝对路径拒绝', !p.isReadAllowed('C:\\Windows\\win.ini'));
+  ok('读授权：相对路径拒绝', !p.isReadAllowed('a.jpg'));
+
+  p.grantProjectReferences(
+    JSON.stringify({
+      source: { path: 'E:/photos/proj-source.png', name: 'x' },
+      params: { lut: { path: 'D:/luts/look.cube' } },
+      externalLut: { path: 'D:/luts/other.cube', name: 'o' },
+    })
+  );
+  ok('工程引用授权：源图', p.isReadAllowed('E:/photos/proj-source.png'));
+  ok('工程引用授权：params.lut.path', p.isReadAllowed('D:\\luts\\look.cube'));
+  ok('工程引用授权：externalLut.path', p.isReadAllowed('D:/luts/other.cube'));
+  ok('工程引用不扩大到同目录其他文件', !p.isReadAllowed('D:/luts/evil.cube'));
+  let badJson = false;
+  try {
+    p.grantProjectReferences('not json');
+  } catch {
+    badJson = true;
+  }
+  ok('非法工程文本不抛错', !badJson);
+
+  p.grantWriteDir('E:\\out');
+  ok('写授权：目录内允许', p.isWriteAllowed('E:\\out\\a.jpg'));
+  ok('写授权：子目录/正斜杠允许', p.isWriteAllowed('E:/out/sub/a.jpg'));
+  ok('写授权：前缀相似目录拒绝', !p.isWriteAllowed('E:\\out2\\a.jpg'));
+  ok('写授权：.. 逃逸拒绝', !p.isWriteAllowed('E:\\out\\..\\evil.jpg'));
+  ok('写授权：非授权目录拒绝', !p.isWriteAllowed('C:\\Windows\\evil.dll'));
+
+  logs.push('[security: update manifest url]');
+  const LATEST = 'https://github.com/shiraijikuu/lumedit/releases/latest';
+  ok(
+    '清单 URL：本仓库 Releases 深链保留',
+    resolveDownloadUrl('https://github.com/shiraijikuu/lumedit/releases/tag/v0.1.1') ===
+      'https://github.com/shiraijikuu/lumedit/releases/tag/v0.1.1'
+  );
+  ok('清单 URL：外部恶意域回退 Releases 页', resolveDownloadUrl('https://evil.example/x.exe') === LATEST);
+  ok('清单 URL：仿冒前缀回退', resolveDownloadUrl('https://github.com/shiraijikuu/lumedit/releases.evil/x') === LATEST);
+  ok('清单 URL：缺省回退', resolveDownloadUrl(undefined) === LATEST);
+}
+
 async function main(): Promise<void> {
   const logEl = document.getElementById('log');
   const write = (t: string) => {
@@ -408,6 +485,7 @@ async function main(): Promise<void> {
     testHistory();
     testProject();
     testSemver();
+    testSecurityPolicy();
   } catch (err) {
     failed++;
     write(`FATAL: ${err instanceof Error ? err.stack ?? err.message : String(err)}`);

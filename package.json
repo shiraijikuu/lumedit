@@ -1,7 +1,7 @@
 {
   "name": "lumedit",
-  "version": "0.1.0",
-  "build": 1,
+  "version": "0.1.1",
+  "build": 2,
   "private": true,
   "description": "LumEdit 光影轻修 - 纯本地单张精修桌面工具（裁剪/调色/LUT/保真导出）",
   "author": "LumEdit",

@@ -5,6 +5,15 @@ import { autoUpdater } from 'electron-updater';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
+import { createFileAccessPolicy } from './fileAccess';
+
+// ---------------- 文件访问授权（渲染层只能读写用户手势授权过的位置） ----------------
+const fileAccess = createFileAccessPolicy();
+
+// 外部链接只允许 http(s)（防 file:// / 任意协议被渲染层唤起）
+function isSafeExternalUrl(url: unknown): url is string {
+  return typeof url === 'string' && /^https?:\/\//i.test(url);
+}
 
 // ---------------- 用户自建 LUT 库（持久化到 userData/user-luts） ----------------
 interface UserLutRecord {
@@ -133,9 +142,9 @@ function createWindow(): void {
     },
   });
 
-  // 外部链接一律系统浏览器打开
+  // 外部链接一律系统浏览器打开（仅 http/https）
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    if (isSafeExternalUrl(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
 
@@ -215,6 +224,7 @@ function registerIpc(): void {
       filters: IMAGE_FILTERS,
     });
     if (r.canceled) return null;
+    for (const p of r.filePaths) fileAccess.grantRead(p);
     return Promise.all(
       r.filePaths.map(async (p) => ({
         path: p,
@@ -234,6 +244,7 @@ function registerIpc(): void {
     });
     if (r.canceled || !r.filePaths[0]) return null;
     const p = r.filePaths[0];
+    fileAccess.grantRead(p);
     return { path: p, name: path.basename(p), text: await fs.readFile(p, 'utf-8') };
   });
 
@@ -321,6 +332,9 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('fs:readBuffer', async (_e, p: string) => {
+    if (!fileAccess.isReadAllowed(p)) {
+      throw new Error(`拒绝读取：${p}\n（仅允许本次会话中用户选择的文件或工程引用的文件）`);
+    }
     const b = await fs.readFile(p);
     return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
   });
@@ -356,16 +370,24 @@ function registerIpc(): void {
     });
     if (r.canceled || !r.filePaths[0]) return null;
     const p = r.filePaths[0];
-    return { path: p, text: await fs.readFile(p, 'utf-8') };
+    const text = await fs.readFile(p, 'utf-8');
+    // 用户显式打开工程：授权读工程本身 + 其引用的外部文件（源图 / 外部 LUT）
+    fileAccess.grantRead(p);
+    fileAccess.grantProjectReferences(text);
+    return { path: p, text };
   });
 
   ipcMain.handle('dialog:pickDir', async () => {
     const r = await dialog.showOpenDialog(mainWindow!, { properties: ['openDirectory', 'createDirectory'] });
     if (r.canceled || !r.filePaths[0]) return null;
+    fileAccess.grantWriteDir(r.filePaths[0]);
     return r.filePaths[0];
   });
 
   ipcMain.handle('fs:writeFile', async (_e, absPath: string, bytes: ArrayBuffer | Uint8Array) => {
+    if (!fileAccess.isWriteAllowed(absPath)) {
+      throw new Error(`拒绝写入：${absPath}\n（仅允许用户选择的输出目录之内）`);
+    }
     const buf = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
     await fs.mkdir(path.dirname(absPath), { recursive: true });
     await fs.writeFile(absPath, buf);
@@ -373,7 +395,12 @@ function registerIpc(): void {
 
   ipcMain.handle('app:meta', () => ({ version: app.getVersion(), build: APP_BUILD }));
 
-  ipcMain.handle('shell:openExternal', (_e, url: string) => shell.openExternal(url));
+  ipcMain.handle('shell:openExternal', (_e, url: string) => {
+    if (!isSafeExternalUrl(url)) {
+      return Promise.reject(new Error(`拒绝打开非 http(s) 链接：${String(url)}`));
+    }
+    return shell.openExternal(url);
+  });
 
   // 手动触发 electron-updater
   ipcMain.handle('updater:check', async () => {
@@ -399,7 +426,7 @@ function registerIpc(): void {
   });
 
   // ---------------- camera-watermark 水印工作室（整体加载原始编辑器） ----------------
-  ipcMain.handle('cwm:open', async (e, payload: unknown) => {
+  ipcMain.handle('cwm:open', async (_e, payload: unknown) => {
     if (wmWindow && !wmWindow.isDestroyed()) {
       studioInitByWc.set(wmWindow.webContents.id, payload);
       wmWindow.focus();
@@ -446,7 +473,7 @@ function registerIpc(): void {
   ipcMain.handle(
     'cwm:compose',
     (
-      e,
+      _e,
       payload: {
         baseDataUrl: string;
         state: unknown;
@@ -477,7 +504,7 @@ function registerIpc(): void {
           win,
           timer,
         });
-        win.webContents.on('crashed', () => {
+        win.webContents.on('render-process-gone', () => {
           clearTimeout(timer);
           composeJobs.delete(wcId);
           reject(new Error('合成窗口崩溃'));
