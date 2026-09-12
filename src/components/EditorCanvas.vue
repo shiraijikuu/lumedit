@@ -283,7 +283,7 @@ function gradDragMove(e: PointerEvent): void {
     if (gradDrag.mode === 'start') ang += 180;
     g.rotation = ((ang + 180) % 360 + 360) % 360 - 180;
     const rad = (g.rotation * Math.PI) / 180;
-    const half = Math.min(0.75, Math.max(0.025, Math.abs(dx * Math.cos(rad) + dy * Math.sin(rad))));
+    const half = Math.min(1.5, Math.max(0.025, Math.abs(dx * Math.cos(rad) + dy * Math.sin(rad))));
     g.w = half * 2;
     if (g.type === 'radial') g.h = g.w;
   }

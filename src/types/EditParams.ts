@@ -262,7 +262,11 @@ export function ensureParams(p: Partial<EditParams> | null | undefined): EditPar
     Object.assign(out.colorGrade.highlights, p.colorGrade.highlights);
   }
   if (p.effects) Object.assign(out.effects, p.effects);
-  if (p.gradation) Object.assign(out.gradation, p.gradation);
+  if (p.gradation) {
+    Object.assign(out.gradation, p.gradation);
+    out.gradation.w = Math.min(3, Math.max(0.05, out.gradation.w));
+    out.gradation.h = Math.min(3, Math.max(0.05, out.gradation.h));
+  }
   if (p.lut) Object.assign(out.lut, p.lut);
   if (p.watermark) out.watermark = p.watermark;
   return out;

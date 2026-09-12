@@ -734,8 +734,33 @@ async function testGradation(): Promise<void> {
   gl.deleteFramebuffer(fbo);
   ok('蒙版外角落不受影响（<160）', corner[0] < 160, `corner=${corner[0]}`);
 
+  // 线性渐变的垂直远端也应生效（PS 语义：垂直方向无限延伸）
+  const p2 = params();
+  p2.gradation.enabled = true;
+  p2.gradation.type = 'linear';
+  p2.gradation.x = 0.25;
+  p2.gradation.y = 0.25;
+  p2.gradation.w = 0.5;
+  p2.gradation.h = 0.5;
+  p2.gradation.exposure = 2;
+  const ctx2: RenderContext = { gl, width: 32, height: 32 };
+  const out2 = stage.execute(input, p2, ctx2);
+  // 同 q.x、但垂直方向处于蒙版矩形外的点（左上角附近）也应提亮
+  const fbo2 = gl.createFramebuffer()!;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, out2, 0);
+  const near = new Uint8Array(4);
+  const far = new Uint8Array(4);
+  gl.readPixels(24, 1, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, near);
+  gl.readPixels(24, 30, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, far);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.deleteFramebuffer(fbo2);
+  ok('线性渐变垂直近端生效', near[0] > 200, `near=${near[0]}`);
+  ok('线性渐变垂直远端同样生效（PS 语义）', far[0] > 200, `far=${far[0]}`);
+
   stage.destroy();
   if (out !== input) gl.deleteTexture(out);
+  if (out2 !== input) gl.deleteTexture(out2);
   gl.deleteTexture(input);
   bmp.close();
 }

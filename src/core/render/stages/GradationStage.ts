@@ -40,10 +40,10 @@ void main() {
   vec2 q = p / max(uHalf, vec2(1e-4)) + 0.5;
   float mask;
   if (uType < 0.5) {
-    float along = clamp(q.x, 0.0, 1.0);
-    float conf = smoothstep(0.0, 0.18, q.y) * (1.0 - smoothstep(0.82, 1.0, q.y));
-    mask = along * conf;
+    // 线性：只沿箭头方向 0→1 渐变，垂直方向无限延伸（PS 语义，整行/列都能拉满）
+    mask = clamp(q.x, 0.0, 1.0);
   } else {
+    // 径向：中心全量，椭圆边界衰减到 0
     mask = 1.0 - smoothstep(0.55, 1.0, length(q - 0.5) / 0.5);
   }
   vec3 a = c * exp2(uExposure);
