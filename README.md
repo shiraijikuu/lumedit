@@ -10,7 +10,7 @@
 
 | LumEdit 主界面 | 载入照片与调色面板 |
 |---|---|
-| ![LumEdit 主界面](docs/screenshots/app-main.png?v=20260914) | ![LumEdit 载入照片与深化调色面板](docs/screenshots/app-loaded.png?v=20260914) |
+| ![LumEdit 主界面](docs/screenshots/app-main.png?v=20260914b) | ![LumEdit 载入索尼 a7C II RAW 并展示 Log 色轮](docs/screenshots/app-loaded.png?v=20260914b) |
 
 ---
 
