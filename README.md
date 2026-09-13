@@ -1,10 +1,16 @@
 # LumEdit · 光影轻修
 
-一款 **Windows 桌面端、纯本地、零上传** 的轻量单张修图工具。
-Electron + Vue 3 + Vite + TypeScript + Pinia + WebGL2，专注「RAW/JPEG 导入 + 裁剪 + 深化调色 + 局部渐变 + LUT + 水印 + 保真导出」。
-中英双语界面。
+**A local-first Windows photo editor with RAW support, 3D LUT, WebGL2 professional color grading, masks, watermark studio, and lossless export.**
 
-![LumEdit 界面：载入照片与深化调色面板](docs/screenshots/app-loaded.png)
+一款 **Windows 桌面端、纯本地、零上传** 的轻量单张修图工具。Electron + Vue 3 + Vite + TypeScript + Pinia + WebGL2，专注 RAW / JPEG 导入、裁剪、深化调色、局部蒙版、LUT、水印与保真导出；中英双语界面。
+
+[![Release](https://img.shields.io/github/v/release/shiraijikuu/lumedit)](https://github.com/shiraijikuu/lumedit/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows-0078D4.svg)](https://github.com/shiraijikuu/lumedit/releases/latest)
+
+| LumEdit 主界面 | 载入照片与调色面板 |
+|---|---|
+| ![LumEdit 主界面](docs/screenshots/app-main.png) | ![LumEdit 载入照片与深化调色面板](docs/screenshots/app-loaded.png) |
 
 ---
 
@@ -14,8 +20,9 @@ Electron + Vue 3 + Vite + TypeScript + Pinia + WebGL2，专注「RAW/JPEG 导入
 
 - **导入**：JPG / PNG / WebP；**RAW 兼容**（ARW / DNG / NEF / CR2 / CR3 / RAF / ORF / RW2 等 20 种扩展名）——提取 RAW 内嵌的全尺寸 JPEG 预览（已用索尼 a7c2 ARW 7008×4672 验证），不做解拜耳、零额外依赖；读取 EXIF，自动按 Orientation 1–8 校正方向（RAW 内嵌图缺 Orientation 时按 RAW TIFF 的 Orientation 转正）
 - **几何**：自由裁剪、固定比例（1:1 / 3:2 / 2:3 / 4:3 / 3:4 / 16:9 / 9:16）、90° 旋转、任意角度、水平/垂直翻转；**裁剪参考线**（三分线 / 网格 / 黄金比例，裁剪模式下一键切换）
-- **深化调色**：曝光、亮度、对比度、高光、阴影、白色、黑色、色温、色调、清晰度、去朦胧、饱和度、自然饱和；RGB 主/红/绿/蓝四通道色调曲线（加点、拖拽、双击删点）+ 实时直方图；8 色相 HSL 混色器（色相/饱和/明度）；阴影/中间调/高光颜色分级；晕影 / 颗粒 / 锐化 / 降噪效果
-- **局部渐变**：线性 / 径向渐变滤镜，可调曝光、色温、色调——压暗天空、突出主体，蒙版参数随工程文件与撤销栈保存
+- **一键自动优化**：本地 GPU 直方图分析 + 规则引擎，自动校正曝光、白平衡、对比度与饱和度；不依赖 AI，照片不上传，分析目标 < 100ms，结果可一键撤销或重置
+- **深化调色**：曝光、亮度、对比度、高光、阴影、白色、黑色、色温、色调、清晰度、去朦胧、饱和度、自然饱和；RGB 主/红/绿/蓝四通道色调曲线（加点、拖拽、双击删点）+ 实时直方图；8 色相 HSL 混色器；阴影 / 中间调 / 高光颜色分级；**Log 色轮 Lift / Gamma / Gain**；晕影 / 颗粒 / 锐化 / 降噪效果
+- **局部蒙版**：线性 / 径向 / 亮度范围 / 颜色范围 / 画笔蒙版，最多 8 个叠加；支持并集 / 交集 / 差集组合，可做“区域内只调红色”等二级调色组合
 - **调色预设**：把整套调色（影调 / 曲线 / HSL / 分级 / 效果 / LUT 及强度）保存为命名预设，一键应用、删除管理；存于 userData，跨会话可用；配合批量处理即「按我的风格批量出图」
 - **白平衡吸管**：点取画面中的中性灰区域，自动推算并设置色温 / 色调
 - **LUT**：19 款内置 `.cube`（六大场景分类）+ 外部 `.cube` 导入，强度 0–100%；「我的 LUT」库支持命名、分类、持久化（存于 userData，重启仍在）；**调色导出为 LUT**：把当前曲线 / HSL / 颜色分级烘焙成 `.cube` 文件分享给他人（GPU 实测烘焙，与预览所见完全一致）
@@ -25,7 +32,7 @@ Electron + Vue 3 + Vite + TypeScript + Pinia + WebGL2，专注「RAW/JPEG 导入
 
 ### 输出与管理
 
-- **导出**：JPG / PNG / WebP，全分辨率、Worker + OffscreenCanvas 离线程渲染，保留 EXIF（含 RAW 元数据回写）、默认清除 GPS；**一键复制到剪贴板**（`Ctrl+Shift+C`，修完直接贴进微信 / 浏览器）；**长边快捷尺寸**（1080 / 2000 / 原图）
+- **导出**：JPG / PNG / WebP / **16-bit PNG**，全分辨率、Worker + OffscreenCanvas 离线程渲染，保留 EXIF（含 RAW 元数据回写）、默认清除 GPS；**一键复制到剪贴板**（`Ctrl+Shift+C`）；**长边快捷尺寸**（1080 / 2000 / 原图）；8bit 路径直接传 RGBA，PNG16 使用原生 deflate 压缩
 - **批量处理**：串行任务队列、进度反馈、可取消（含水印合成阶段）
 - **工程文件**：`.lightedit` 保存 / 打开（参数 + 资源引用，非破坏性），旧工程向前兼容
 - **EXIF 查看面板**：顶栏「信息」打开模态，查看相机 / 镜头 / 曝光参数 / 拍摄时间 / GPS 等完整元数据
@@ -60,8 +67,9 @@ Electron + Vue 3 + Vite + TypeScript + Pinia + WebGL2，专注「RAW/JPEG 导入
 
 ```
 原图/RAW内嵌预览 → Orientation 校正（上传前 2D）→ Geometry 裁剪/旋转/翻转
-     → Adjust 基础调色 → Curve 曲线 → HSL → ColorGrade 分级
-     → Gradation 局部渐变 → Effects 效果 → LUT → Watermark 水印 → 输出
+     → Adjust 基础调色 → Curve 曲线 → HSL → ColorGrade 分级 → Log Wheels 色轮
+     → Qualifier 取色限定器 → Gradation 多蒙版 → Effects 效果 → LUT
+     → Watermark 水印（离屏合成）→ 输出
 ```
 
 - Curve / HSL / ColorGrade / Gradation / Effects Stage 由 `createEditStageBundle()` 统一组装，预览与导出共用，所见即所得；中性参数全部直通短路
@@ -89,8 +97,9 @@ npm run publish    # 把 release/ 资产发布到 GitHub Release（Node 跨平�
 npm run smoke      # esbuild 打包测试 → 离屏 Electron(SwiftShader) 运行，输出 112+ passed / 0 failed
 ```
 
-覆盖：`.cube` 解析与防 DoS 边界、GPU 管线（几何/调色/曲线/HSL/分级/渐变/效果/LUT/直通/全串联）、
+覆盖：`.cube` 解析与防 DoS 边界、GPU 管线（几何/调色/曲线/HSL/分级/Log 色轮/多蒙版/效果/LUT/全串联）、
 RAW 扩展名与签名识别、合成 RAW 内嵌 JPEG 提取与 Electron 端到端解码、Orientation 8 转正、
+一键自动优化规则与 GPU 直方图、蒙版并集/交集/差集与画笔逐像素验证、PNG16 方向与压缩、
 RAW EXIF → 水印工作室字段映射、EXIF 重写与三容器注入回读、撤销栈、工程文件序列化与向前兼容、
 调色预设序列化、LUT 烘焙往返、中英文词典 key 对齐、文件访问授权策略、更新清单 URL 白名单、
 纹理池复用等。测试在隐藏窗口 + SwiftShader 下离屏运行，无需人工。

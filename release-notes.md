@@ -1,6 +1,12 @@
 # LumEdit v0.5.0
 
+**Local-first Windows photo editor with RAW support, 3D LUT, WebGL2 professional color grading, masks, watermark studio, and lossless export.**
+
 发布日期：2026-09-14
+
+![LumEdit main interface](https://raw.githubusercontent.com/shiraijikuu/lumedit/main/docs/screenshots/app-main.png)
+
+![LumEdit loaded image and color grading](https://raw.githubusercontent.com/shiraijikuu/lumedit/main/docs/screenshots/app-loaded.png)
 
 ## 新增
 - **一键自动优化**：本地 GPU 直方图分析 + 规则引擎，自动校正曝光、白平衡、对比度与饱和度；分析目标 < 100ms，结果可一键撤销
