@@ -83,6 +83,16 @@
 
       <CollapseSection :default-open="false">
         <template #title>
+          {{ t('adjust.logWheels') }}<span class="pro-badge">{{ t('adjust.proBadge') }}</span>
+        </template>
+        <template #actions>
+          <button type="button" class="ghost mini" @click="resetLogWheels">{{ t('common.reset') }}</button>
+        </template>
+        <LogWheelsSection />
+      </CollapseSection>
+
+      <CollapseSection :default-open="false">
+        <template #title>
           {{ t('qualifier.title') }}<span class="pro-badge">{{ t('adjust.proBadge') }}</span>
         </template>
         <template #actions>
@@ -139,6 +149,7 @@ import ToneSection from './color/ToneSection.vue';
 import CurveSection from './color/CurveSection.vue';
 import HslSection from './color/HslSection.vue';
 import GradeSection from './color/GradeSection.vue';
+import LogWheelsSection from './color/LogWheelsSection.vue';
 import QualifierSection from './color/QualifierSection.vue';
 import EffectsSection from './color/EffectsSection.vue';
 import GradationSection from './color/GradationSection.vue';
@@ -180,6 +191,11 @@ function resetHsl(): void {
 function resetGrade(): void {
   store.mutate((p) => {
     p.colorGrade = JSON.parse(JSON.stringify(defaultEditParams.colorGrade));
+  });
+}
+function resetLogWheels(): void {
+  store.mutate((p) => {
+    p.logWheels = JSON.parse(JSON.stringify(defaultEditParams.logWheels));
   });
 }
 const GRADATION_DEFAULT = JSON.parse(JSON.stringify(defaultEditParams.gradation));

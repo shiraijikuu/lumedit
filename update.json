@@ -9,7 +9,7 @@
   },
   "download_url": "https://github.com/shiraijikuu/lumedit/releases/download/v0.5.0/LumEdit-0.5.0-setup.exe",
   "notes": {
-    "zh": "LumEdit v0.5.0：新增本地一键自动优化与重置；完善蒙版交互并修复导出问题；补齐预设图片水印；优化导出 / 复制速度并修复 PNG16 方向。",
-    "en": "LumEdit v0.5.0 adds local auto enhance with reset, improves mask interaction and export, restores image-watermark presets, speeds up export/copy and fixes PNG16 orientation."
+    "zh": "LumEdit v0.5.0：新增 Log 色轮与本地一键自动优化；完善蒙版交互并修复导出、PNG16 方向、预设图片水印和复制速度。",
+    "en": "LumEdit v0.5.0 adds Log Wheels and local auto enhance, improves masks, and fixes export, PNG16 orientation, image-watermark presets and copy speed."
   }
 }

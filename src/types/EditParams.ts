@@ -88,6 +88,22 @@ export interface ColorGradeParams {
   highlights: GradeWheel;
 }
 
+// ---------------- 第二档：Log 色轮（Lift / Gamma / Gain） ----------------
+export interface LogWheel {
+  /** 色相平面 X，-1（青绿）~ 1（红橙） */
+  x: number;
+  /** 色相平面 Y，-1（蓝）~ 1（黄） */
+  y: number;
+  /** 亮度偏移，-1 ~ 1 */
+  luma: number;
+}
+export interface LogWheelsParams {
+  enabled: boolean;
+  lift: LogWheel;
+  gamma: LogWheel;
+  gain: LogWheel;
+}
+
 // ---------------- 第二档：效果（仅完整版） ----------------
 export interface EffectsParams {
   /** 晕影 -1（黑角）~ 1（白角） */
@@ -203,6 +219,8 @@ export interface EditParams {
   hsl: HslParams;
   /** 第二档：颜色分级 */
   colorGrade: ColorGradeParams;
+  /** 第二档：Log 色轮 Lift / Gamma / Gain */
+  logWheels: LogWheelsParams;
   /** 第二档：效果 */
   effects: EffectsParams;
   /** v0.3.0：局部渐变（兼容字段，新工程以 gradations 为准；旧工程由 ensureParams 迁移） */
@@ -267,6 +285,12 @@ export const defaultEditParams: EditParams = {
     shadows: { hue: 220, sat: 0 },
     midtones: { hue: 40, sat: 0 },
     highlights: { hue: 40, sat: 0 },
+  },
+  logWheels: {
+    enabled: false,
+    lift: { x: 0, y: 0, luma: 0 },
+    gamma: { x: 0, y: 0, luma: 0 },
+    gain: { x: 0, y: 0, luma: 0 },
   },
   effects: {
     vignette: 0,
@@ -410,6 +434,12 @@ export function ensureParams(p: Partial<EditParams> | null | undefined): EditPar
     Object.assign(out.colorGrade.midtones, p.colorGrade.midtones);
     Object.assign(out.colorGrade.highlights, p.colorGrade.highlights);
   }
+  if (p.logWheels) {
+    out.logWheels.enabled = !!p.logWheels.enabled;
+    for (const key of ['lift', 'gamma', 'gain'] as const) {
+      Object.assign(out.logWheels[key], p.logWheels[key] ?? {});
+    }
+  }
   if (p.effects) Object.assign(out.effects, p.effects);
   if (p.gradation) {
     const gp = p.gradation as Partial<GradationParams> & { x?: number; y?: number; w?: number; h?: number; rotation?: number };
@@ -467,6 +497,12 @@ export function cloneParams(p: EditParams): EditParams {
       midtones: { ...p.colorGrade.midtones },
       highlights: { ...p.colorGrade.highlights },
     },
+    logWheels: {
+      enabled: p.logWheels.enabled,
+      lift: { ...p.logWheels.lift },
+      gamma: { ...p.logWheels.gamma },
+      gain: { ...p.logWheels.gain },
+    },
     effects: { ...p.effects },
     gradation: { ...p.gradation, strokes: cloneStrokes(p.gradation.strokes) },
     gradations: Array.isArray(p.gradations)
@@ -493,6 +529,7 @@ export interface PresetColorParams {
   curve: CurveParams;
   hsl: HslParams;
   colorGrade: ColorGradeParams;
+  logWheels: LogWheelsParams;
   effects: EffectsParams;
   qualifier: QualifierParams;
   tonemap: ToneRollParams;
@@ -507,6 +544,7 @@ export function pickPresetParams(p: EditParams): PresetColorParams {
     curve: c.curve,
     hsl: c.hsl,
     colorGrade: c.colorGrade,
+    logWheels: c.logWheels,
     effects: c.effects,
     qualifier: c.qualifier,
     tonemap: c.tonemap,

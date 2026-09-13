@@ -137,6 +137,7 @@ export const useEditorStore = defineStore('editor', () => {
     params.curve = src.curve;
     params.hsl = src.hsl;
     params.colorGrade = src.colorGrade;
+    params.logWheels = src.logWheels;
     params.effects = src.effects;
     params.gradation = src.gradation;
     params.gradations = src.gradations;
@@ -293,6 +294,7 @@ export const useEditorStore = defineStore('editor', () => {
       params.curve = p.curve;
       params.hsl = p.hsl;
       params.colorGrade = p.colorGrade;
+      params.logWheels = p.logWheels;
       params.effects = p.effects;
       params.lut = p.lut;
       // LUT 数据恢复：内置 / 用户库走 syncLutFromParams；外部文件按路径重读
@@ -490,6 +492,7 @@ export const useEditorStore = defineStore('editor', () => {
       p.curve = d.curve;
       p.hsl = d.hsl;
       p.colorGrade = d.colorGrade;
+      p.logWheels = d.logWheels;
       p.effects = d.effects;
       p.gradation = d.gradation;
       p.gradations = d.gradations;
@@ -784,6 +787,7 @@ export const useEditorStore = defineStore('editor', () => {
         params.curve = p.curve;
         params.hsl = p.hsl;
         params.colorGrade = p.colorGrade;
+        params.logWheels = p.logWheels;
         params.effects = p.effects;
         params.gradation = p.gradation;
         params.gradations = p.gradations;
@@ -1023,6 +1027,7 @@ export const useEditorStore = defineStore('editor', () => {
       params.curve = p.curve;
       params.hsl = p.hsl;
       params.colorGrade = p.colorGrade;
+      params.logWheels = p.logWheels;
       params.effects = p.effects;
       params.lut = p.lut;
       if (p.watermark) {
@@ -1133,6 +1138,7 @@ export const useEditorStore = defineStore('editor', () => {
     params.curve = d.curve;
     params.hsl = d.hsl;
     params.colorGrade = d.colorGrade;
+    params.logWheels = d.logWheels;
     params.effects = d.effects;
     params.gradation = d.gradation;
     params.gradations = d.gradations;
@@ -1171,6 +1177,7 @@ export const useEditorStore = defineStore('editor', () => {
       params.curve = p.curve;
       params.hsl = p.hsl;
       params.colorGrade = p.colorGrade;
+      params.logWheels = p.logWheels;
       params.effects = p.effects;
       params.lut = p.lut;
       await syncLutFromParams();

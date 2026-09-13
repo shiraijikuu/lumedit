@@ -4,6 +4,7 @@ import { AdjustStage } from './stages/AdjustStage';
 import { CurveStage } from './stages/CurveStage';
 import { HslStage } from './stages/HslStage';
 import { ColorGradeStage } from './stages/ColorGradeStage';
+import { LogWheelsStage } from './stages/LogWheelsStage';
 import { QualifierStage } from './stages/QualifierStage';
 import { GradationStage } from './stages/GradationStage';
 import { EffectsStage } from './stages/EffectsStage';
@@ -17,6 +18,7 @@ export interface EditStageBundle {
   curve: CurveStage;
   hsl: HslStage;
   colorGrade: ColorGradeStage;
+  logWheels: LogWheelsStage;
   qualifier: QualifierStage;
   gradation: GradationStage;
   effects: EffectsStage;
@@ -28,7 +30,7 @@ export interface EditStageBundle {
 /**
  * 构建编辑管线（预览 ImageRenderer 与导出 Worker 共用同一套，保证所见即所得）。
  * 固定顺序（不可调整）：
- * 几何 → 基础调色 → 曲线 → HSL → 颜色分级 → 取色限定器(二级) →
+ * 几何 → 基础调色 → 曲线 → HSL → 颜色分级 → Log 色轮 → 取色限定器(二级) →
  * 局部蒙版(多) → 效果 → LUT → Soft Clip 输出滚降。
  */
 export function createEditStageBundle(): EditStageBundle {
@@ -37,6 +39,7 @@ export function createEditStageBundle(): EditStageBundle {
   const curve = new CurveStage();
   const hsl = new HslStage();
   const colorGrade = new ColorGradeStage();
+  const logWheels = new LogWheelsStage();
   const qualifier = new QualifierStage();
   const gradation = new GradationStage();
   const effects = new EffectsStage();
@@ -48,6 +51,7 @@ export function createEditStageBundle(): EditStageBundle {
     curve,
     hsl,
     colorGrade,
+    logWheels,
     qualifier,
     gradation,
     effects,
@@ -61,6 +65,7 @@ export function createEditStageBundle(): EditStageBundle {
     curve,
     hsl,
     colorGrade,
+    logWheels,
     qualifier,
     gradation,
     effects,

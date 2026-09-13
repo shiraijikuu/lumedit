@@ -35,6 +35,7 @@ import { evalCurve, bakeCurveLut, isIdentityCurve, CURVE_LUT_SIZE } from '../../
 import { CurveStage } from '../../src/core/render/stages/CurveStage';
 import { HslStage } from '../../src/core/render/stages/HslStage';
 import { ColorGradeStage } from '../../src/core/render/stages/ColorGradeStage';
+import { LogWheelsStage } from '../../src/core/render/stages/LogWheelsStage';
 import { EffectsStage } from '../../src/core/render/stages/EffectsStage';
 import { ToneRollStage } from '../../src/core/render/stages/ToneRollStage';
 import { QualifierStage } from '../../src/core/render/stages/QualifierStage';
@@ -646,7 +647,7 @@ async function testNewStagesNeutral(): Promise<void> {
   const input = uploadTexture(gl, bmp);
   const ctx: RenderContext = { gl, width: 64, height: 64 };
   const p = params();
-  const stages = [new CurveStage(), new HslStage(), new ColorGradeStage(), new EffectsStage()];
+  const stages = [new CurveStage(), new HslStage(), new ColorGradeStage(), new LogWheelsStage(), new EffectsStage()];
   const src = readPixel(gl, input, 64, 64);
   for (const s of stages) {
     const out = s.execute(input, p, ctx);
@@ -657,6 +658,19 @@ async function testNewStagesNeutral(): Promise<void> {
     if (out !== input) gl.deleteTexture(out);
     s.destroy();
   }
+  const lp = params();
+  lp.logWheels = {
+    enabled: true,
+    lift: { x: 0, y: 0, luma: 0.55 },
+    gamma: { x: 0, y: 0, luma: 0 },
+    gain: { x: 0, y: 0, luma: 0 },
+  };
+  const logStage = new LogWheelsStage();
+  const logOut = logStage.execute(input, lp, ctx);
+  const logPx = readPixel(gl, logOut, 64, 64);
+  ok('Log 色轮 Lift 提亮暗部', logPx[0] > src[0] + 5 && logPx[1] > src[1] + 5 && logPx[2] > src[2] + 2, `src=${src[0]},${src[1]},${src[2]} out=${logPx[0]},${logPx[1]},${logPx[2]}`);
+  if (logOut !== input) gl.deleteTexture(logOut);
+  logStage.destroy();
   gl.deleteTexture(input);
   bmp.close();
 }
