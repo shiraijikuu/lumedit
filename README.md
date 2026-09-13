@@ -303,7 +303,9 @@ https://cdn.jsdelivr.net/gh/shiraijikuu/lumedit@main/update.json
 <a id="faq"></a>
 <a name="faq"></a>
 
-## FAQ / 常见问题
+## FAQ
+
+**常见问题 / Frequently Asked Questions**
 
 **EN**
 - **Does LumEdit upload my photos?** No. All analysis, grading, masks, watermarking and export run locally. No account is required.
