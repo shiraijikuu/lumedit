@@ -4,10 +4,10 @@
 > **EN:** A privacy-first Windows desktop editor for RAW, professional color, masks, LUTs and watermarks.
 > **中文：** 一款本地优先、隐私优先，面向 RAW、专业调色、蒙版、LUT 与水印的 Windows 桌面修图工具。
 
-[![Release](https://img.shields.io/github/v/release/shiraijikuu/lumedit)](https://github.com/shiraijikuu/lumedit/releases/latest)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows-0078D4.svg)](https://github.com/shiraijikuu/lumedit/releases/latest)
-[![Tech](https://img.shields.io/badge/tech-Electron%20%2B%20Vue%203%20%2B%20WebGL2-42b883.svg)](https://github.com/shiraijikuu/lumedit)
+[![Release / 版本](https://img.shields.io/github/v/release/shiraijikuu/lumedit)](https://github.com/shiraijikuu/lumedit/releases/latest)
+[![License / 许可证](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Platform / 平台](https://img.shields.io/badge/platform-Windows-0078D4.svg)](https://github.com/shiraijikuu/lumedit/releases/latest)
+[![Tech / 技术](https://img.shields.io/badge/tech-Electron%20%2B%20Vue%203%20%2B%20WebGL2-42b883.svg)](https://github.com/shiraijikuu/lumedit)
 
 **EN:** LumEdit is a local-first, non-destructive Windows photo editor. Import RAW and common image formats, use a WebGL2 professional color pipeline, and finish images with 3D LUTs, curves, HSL, color grading, Log wheels, local masks, presets, batch processing, watermark studio, and high-fidelity export. Photos never leave your computer, and no account is required.
 
@@ -19,9 +19,9 @@
 - **AI assistance / AI 协助：** OpenAI Codex
 - **License / 许可证：** MIT
 
-| LumEdit main window / 主界面 | RAW loaded with color tools / 载入 RAW 与调色面板 |
+| LumEdit main window / LumEdit 主界面 | RAW loaded with color tools / 载入 RAW 与调色面板 |
 |---|---|
-| ![LumEdit main window](docs/screenshots/app-main.png?v=20260914b) | ![LumEdit with Sony a7C II RAW loaded](docs/screenshots/app-loaded.png?v=20260914b) |
+| ![LumEdit main window / LumEdit 主界面](docs/screenshots/app-main.png?v=20260914b) | ![LumEdit with Sony a7C II RAW loaded / 载入索尼 a7C II RAW 与调色面板](docs/screenshots/app-loaded.png?v=20260914b) |
 
 ---
 
@@ -46,7 +46,7 @@
 - **Bilingual UI:** Simplified Chinese / English switching for the renderer, native menus, dialogs and update prompts.
 
 **中文**
-- **导入**：支持 JPG / PNG / WebP；兼容 ARW、DNG、NEF、CR2、CR3、RAF、ORF、RW2 等 20 多种 RAW 扩展名，提取 RAW 内嵌全尺寸 JPEG 预览，读取 EXIF 并自动按 Orientation 1–8 转正；不依赖 libraw，不做解拜耳。
+- **导入**：支持 JPG / PNG / WebP；兼容 ARW、DNG、NEF、CR2、CR3、RAF、ORF、RW2 等 20 多种常见 RAW 扩展名，提取 RAW 内嵌全尺寸 JPEG 预览，读取 EXIF 并自动按 Orientation 1–8 转正；不依赖 libraw，不做解拜耳。
 - **几何**：自由裁剪、固定比例、90° 旋转、任意角度校正、水平/垂直翻转，以及三分线 / 网格 / 黄金比例裁剪参考线。
 - **一键自动优化**：本地 GPU 直方图分析 + 规则引擎，自动校正曝光、白平衡、对比度与饱和度；不依赖 AI、不上传照片，分析目标 < 100ms，可一键撤销或重置。
 - **深化调色**：曝光、亮度、对比度、高光、阴影、白色、黑色、色温、色调、清晰度、去朦胧、饱和度、自然饱和；RGB 四通道曲线 + 实时直方图；8 色相 HSL；阴影 / 中间调 / 高光颜色分级；Log 色轮 Lift / Gamma / Gain；晕影、颗粒、锐化与降噪。
@@ -67,10 +67,46 @@
 
 ## Download / 下载
 
-- **Installer / 安装版：** `LumEdit-x.y.z-setup.exe` — NSIS installer, recommended for most users. / NSIS 安装包，推荐大多数用户使用。
-- **Portable / 便携版：** `LumEdit-x.y.z-portable.exe` — single-file portable build for USB drives. In-app automatic updates are not available in the portable build. / 单文件免安装，适合 U 盘携带；便携版不提供应用内自动更新。
+**EN**
+- **Installer:** `LumEdit-x.y.z-setup.exe` — NSIS installer, recommended for most users.
+- **Portable:** `LumEdit-x.y.z-portable.exe` — single-file portable build for USB drives. In-app automatic updates are not available in the portable build.
+
+**中文**
+- **安装版**：`LumEdit-x.y.z-setup.exe`，NSIS 安装包，推荐大多数用户使用。
+- **便携版**：`LumEdit-x.y.z-portable.exe`，单文件免安装，适合 U 盘携带；便携版不提供应用内自动更新。
 
 Latest release / 最新版本：https://github.com/shiraijikuu/lumedit/releases/latest
+
+---
+
+## Quick Start / 快速开始
+
+### Option 1: Run the packaged version / 方式一：直接运行打包版
+
+**EN:** Download the installer from Releases, run it, and launch LumEdit from the Start menu. No Python or Node.js is required.
+
+**中文：** 从 Releases 下载安装包，运行安装后从开始菜单启动 LumEdit。无需安装 Python 或 Node.js。
+
+### Option 2: Run from source / 方式二：从源码运行
+
+**EN:** Install Node.js and npm, then run the commands below in the project directory. Electron will start the desktop app with the Vite development server.
+
+**中文：** 安装 Node.js 与 npm，然后在项目目录执行下面的命令。Electron 会配合 Vite 开发服务器启动桌面应用。
+
+```bash
+npm install
+npm run dev
+```
+
+---
+
+## Usage / 使用步骤
+
+1. **Open a photo / 打开照片：** Use `Ctrl + O` or the file menu to load JPG, PNG, WebP or a supported RAW file. The image is displayed after Orientation correction. / 使用 `Ctrl + O` 或文件菜单载入 JPG、PNG、WebP 或支持的 RAW，图片会先按 Orientation 转正再显示。
+2. **Adjust the image / 调整图片：** Use the right-side panels for exposure, curves, HSL, color grading, Log wheels, masks, LUTs and effects. / 使用右侧面板调整曝光、曲线、HSL、颜色分级、Log 色轮、蒙版、LUT 与效果。
+3. **Compare and inspect / 对比与检查：** Hold `\` to view the original, drag the split divider to compare, and enable `J` to check clipping warnings. / 按住 `\` 查看原图，拖动分屏分割线对比，按 `J` 检查高光 / 阴影剪裁警告。
+4. **Add a watermark / 添加水印：** Open Watermark Studio, edit text, style, image watermark, position and decoration, then apply the result back to the editor. / 打开水印工作室，编辑文字、样式、图片水印、位置与装饰，然后将结果应用回编辑器。
+5. **Export or save / 导出或保存：** Export JPG, PNG, WebP or 16-bit PNG, copy to the clipboard, or save a non-destructive `.lightedit` project. / 导出 JPG、PNG、WebP 或 16-bit PNG，复制到剪贴板，或保存非破坏性的 `.lightedit` 工程。
 
 ---
 
@@ -78,17 +114,17 @@ Latest release / 最新版本：https://github.com/shiraijikuu/lumedit/releases/
 
 | Layer / 层 | Choice / 选型 |
 |---|---|
-| Desktop shell / 桌面壳 | Electron (main process, preload, IPC allowlist, i18n) |
-| Frontend / 前端 | Vue 3 + Vite + TypeScript |
-| State / 状态 | Pinia (editor, batch, toast) |
-| Color rendering / 色彩渲染 | WebGL2 (3D LUT textures, curve LUT baking, texture pooling) |
-| RAW / RAW 导入 | Custom embedded-JPEG preview extractor (marker walk, no libraw) |
-| EXIF / 元数据 | exifr |
-| LUT parsing / LUT 解析 | Custom `.cube` parser (3D LUT only, size limits for DoS protection) |
-| Export / 导出 | Web Worker + OffscreenCanvas |
-| Packaging / 打包 | electron-builder (NSIS + Portable; Chromium locales trimmed to zh-CN / en-US) |
+| Desktop shell / 桌面壳 | Electron: main process, preload, IPC allowlist and native i18n / Electron：主进程、preload、IPC 白名单与原生 i18n |
+| Frontend / 前端 | Vue 3 + Vite + TypeScript / Vue 3 + Vite + TypeScript |
+| State / 状态 | Pinia for editor, batch and toast state / Pinia 管理编辑器、批量与提示状态 |
+| Color rendering / 色彩渲染 | WebGL2 with 3D LUT textures, curve LUT baking and texture pooling / WebGL2，使用 3D LUT 纹理、曲线 LUT 烘焙与纹理池 |
+| RAW import / RAW 导入 | Custom embedded-JPEG preview extractor using a marker walk, with no libraw / 自研 marker walk 内嵌 JPEG 预览提取器，不依赖 libraw |
+| EXIF / 元数据 | exifr / exifr |
+| LUT parsing / LUT 解析 | Custom `.cube` parser for 3D LUTs with size limits for DoS protection / 自研 `.cube` 解析器，仅支持 3D LUT，并带尺寸上限防 DoS |
+| Export / 导出 | Web Worker + OffscreenCanvas / Web Worker + OffscreenCanvas |
+| Packaging / 打包 | electron-builder with NSIS + Portable; Chromium locales trimmed to zh-CN / en-US / electron-builder，输出 NSIS + Portable，并将 Chromium 语言包裁剪到 zh-CN / en-US |
 
-**Pipeline / 管线：**
+**EN**
 
 ```text
 Source / RAW embedded preview
@@ -107,14 +143,41 @@ Source / RAW embedded preview
 → Output
 ```
 
-- The same stage bundle powers preview and full-resolution export, so the exported result matches the preview. Neutral stages short-circuit. / 预览与全分辨率导出复用同一套 Stage，所见即所得；中性参数直接短路。
-- Intermediate textures are reused through `texturePool.ts`, and parameter changes are coalesced with `requestAnimationFrame`. / 中间纹理通过纹理池复用，参数变化经 `requestAnimationFrame` 合帧。
-- Preview is downsampled to a 2000 px long edge; export uses the full resolution. / 预览最长边降采样至 2000px，导出使用全分辨率。
-- sRGB is the working space, with an approximate Adobe RGB conversion matrix. / 工作空间为 sRGB，并提供近似 Adobe RGB 转换矩阵。
+**中文**
+
+```text
+原图 / RAW 内嵌预览
+→ Orientation 方向校正
+→ Geometry 裁剪 / 旋转 / 翻转
+→ Adjust 基础调色
+→ Curve 曲线
+→ HSL
+→ ColorGrade 颜色分级
+→ Log Wheels 色轮
+→ Qualifier 取色限定器
+→ Gradation 局部蒙版
+→ Effects 效果
+→ LUT
+→ Watermark 水印离屏合成
+→ Output 输出
+```
+
+- **EN:** The same stage bundle powers preview and full-resolution export, so the exported result matches the preview. Neutral stages short-circuit.
+- **中文：** 预览与全分辨率导出复用同一套 Stage，所见即所得；中性参数直接短路。
+- **EN:** Intermediate textures are reused through `texturePool.ts`, and parameter changes are coalesced with `requestAnimationFrame`.
+- **中文：** 中间纹理通过纹理池复用，参数变化经 `requestAnimationFrame` 合帧。
+- **EN:** Preview is downsampled to a 2000 px long edge; export uses the full resolution.
+- **中文：** 预览最长边降采样至 2000px，导出使用全分辨率。
+- **EN:** sRGB is the working space, with an approximate Adobe RGB conversion matrix.
+- **中文：** 工作空间为 sRGB，并提供近似 Adobe RGB 转换矩阵。
 
 ---
 
 ## Development / 开发与运行
+
+**EN:** Install dependencies, start the development environment, run type checks, build release assets, or run the offscreen smoke suite with the commands below.
+
+**中文：** 使用下面的命令安装依赖、启动开发环境、执行类型检查、构建发布资产或运行离屏冒烟测试。
 
 ```bash
 npm install        # Install dependencies / 安装依赖
@@ -128,11 +191,12 @@ npm run smoke      # Offscreen Electron smoke tests / 离屏 Electron 冒烟测�
 
 ### Smoke Tests / 冒烟测试
 
-**EN:** The smoke suite runs in hidden Electron windows with SwiftShader and covers `.cube` parsing and DoS limits, the complete GPU pipeline, RAW extension/signature detection, embedded JPEG extraction, Orientation 8, Auto Enhance, mask composition and brush pixels, PNG16 orientation/compression, EXIF rewrite and three-container injection, undo history, project serialization, presets, LUT baking, i18n key alignment, update URL allowlisting and texture pooling. Current result: 190+ passed, 0 failed.
+**EN:** The smoke suite runs in hidden Electron windows with SwiftShader and covers `.cube` parsing and DoS limits, the complete GPU pipeline, RAW extension/signature detection, embedded JPEG extraction, Orientation 8, Auto Enhance, mask composition and brush pixels, PNG16 orientation/compression, EXIF rewrite and three-container injection, undo history, project serialization, presets, LUT baking, i18n key alignment, update URL allowlisting and texture pooling. Current result: 191 passed, 0 failed.
 
-**中文：** 冒烟测试在隐藏 Electron 窗口 + SwiftShader 下离屏运行，覆盖 `.cube` 解析与防 DoS、完整 GPU 管线、RAW 扩展名/签名识别、内嵌 JPEG 提取、Orientation 8 转正、自动优化、蒙版并集/交集/差集与画笔逐像素、PNG16 方向与压缩、EXIF 重写与三容器注入、撤销栈、工程序列化、调色预设、LUT 烘焙往返、中英文词典对齐、更新 URL 白名单与纹理池复用等。当前结果：190+ 通过，0 失败。
+**中文：** 冒烟测试在隐藏 Electron 窗口 + SwiftShader 下离屏运行，覆盖 `.cube` 解析与防 DoS、完整 GPU 管线、RAW 扩展名/签名识别、内嵌 JPEG 提取、Orientation 8 转正、自动优化、蒙版并集/交集/差集与画笔逐像素、PNG16 方向与压缩、EXIF 重写与三容器注入、撤销栈、工程序列化、调色预设、LUT 烘焙往返、中英文词典对齐、更新 URL 白名单与纹理池复用等。当前结果：191 通过，0 失败。
 
-> Offscreen WebGL2 requires `--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader`; the smoke runner already includes them. / 离屏 WebGL2 需要上述 Electron 参数，`smoke-main.cjs` 已内置。
+> **EN:** Offscreen WebGL2 requires `--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader`; the smoke runner already includes them.
+> **中文：** 离屏 WebGL2 需要 `--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader`；`smoke-main.cjs` 已内置这些参数。
 
 ---
 
@@ -142,30 +206,35 @@ npm run smoke      # Offscreen Electron smoke tests / 离屏 Electron 冒烟测�
 - Source files: `src/assets/luts/*.cube` — 17³ real `.cube` files generated by scripts.
 - Index: `src/assets/luts/manifest.json`.
 - Loading: `LutManager` lazy-loads with `import.meta.glob(..., { query: '?raw' })` and caches parsed results in memory.
-- Library: 19 LUTs in six categories — Film 4, Cinematic 4, Portrait 3, Landscape 3, Black & White 2, Creative 3.
+- Library: 19 LUTs in six categories — Film 4, Cinematic 4, Portrait 3, Landscape 3, Black & White 2 and Creative 3.
 
 **中文**
-- 源文件：`src/assets/luts/*.cube`，脚本生成的真实 17³ `.cube`。
+- 源文件：`src/assets/luts/*.cube`，由脚本生成的真实 17³ `.cube` 文件。
 - 索引：`src/assets/luts/manifest.json`。
-- 加载：`LutManager` 通过 `import.meta.glob(..., { query: '?raw' })` 按需加载并缓存解析结果。
+- 加载：`LutManager` 通过 `import.meta.glob(..., { query: '?raw' })` 按需加载，并在内存中缓存解析结果。
 - 库内容：6 类共 19 款——胶片 4 / 电影感 4 / 人像 3 / 风光 3 / 黑白 2 / 创意 3。
 
-To add or remove LUTs, edit `GRADES` / `META` in `scripts/gen-luts.mjs` and run:
+**EN:** To add or remove LUTs, edit `GRADES` / `META` in `scripts/gen-luts.mjs` and run the command below.
+
+**中文：** 要增删 LUT，请修改 `scripts/gen-luts.mjs` 中的 `GRADES` / `META`，然后执行下面的命令。
 
 ```bash
 node scripts/gen-luts.mjs
 ```
 
-修改 `scripts/gen-luts.mjs` 中的 `GRADES` / `META` 后执行上述命令，即可重新生成 `.cube` 并更新 manifest。
-
 ---
 
 ## Updates / 检查更新
 
-LumEdit uses two update paths / LumEdit 使用双轨更新：
+**EN:** LumEdit uses two update paths:
 
-1. **Semantic version / 语义化版本：** electron-updater reads `latest.yml` from `github.com/shiraijikuu/lumedit`; electron-builder generates the feed during packaging. / electron-updater 从 `github.com/shiraijikuu/lumedit` 读取 `latest.yml`，打包时由 electron-builder 生成。
-2. **Build number / build 号：** the remote manifest detects rebuilds of the same version and opens the Release page for manual download. Download URLs are restricted to this repository's Releases by `resolveDownloadUrl`. / 远程清单可检测同版本重新构建，并跳转 Release 页手动下载；`resolveDownloadUrl` 只信任本仓库 Releases。
+1. **Semantic version:** electron-updater reads `latest.yml` from `github.com/shiraijikuu/lumedit`; electron-builder generates the feed during packaging.
+2. **Build number:** the remote manifest detects rebuilds of the same version and opens the Release page for manual download. Download URLs are restricted to this repository's Releases by `resolveDownloadUrl`.
+
+**中文：** LumEdit 使用双轨更新：
+
+1. **语义化版本**：electron-updater 从 `github.com/shiraijikuu/lumedit` 读取 `latest.yml`，打包时由 electron-builder 生成更新源。
+2. **build 号**：远程清单可检测同版本重新构建，并跳转 Release 页手动下载；`resolveDownloadUrl` 只信任本仓库 Releases。
 
 Production manifest / 正式清单：
 
@@ -173,7 +242,9 @@ Production manifest / 正式清单：
 https://cdn.jsdelivr.net/gh/shiraijikuu/lumedit@main/update.json
 ```
 
-Release flow / 发布流程：create tag / 打 tag → `npm run dist` → `npm run publish` → update `update.json`.
+**EN:** Release flow: create a tag, run `npm run dist`, run `npm run publish`, then update `update.json`.
+
+**中文：** 发布流程：打 tag，执行 `npm run dist`，执行 `npm run publish`，最后更新 `update.json`。
 
 ---
 
@@ -215,13 +286,13 @@ Release flow / 发布流程：create tag / 打 tag → `npm run dist` → `npm r
 
 | Path / 路径 | Purpose / 用途 |
 |---|---|
-| `.github/workflows/` | CI: typecheck + smoke tests on push/PR / push/PR 自动类型检查与冒烟测试 |
+| `.github/workflows/` | CI: typecheck + smoke tests on push/PR / CI：push/PR 自动执行类型检查与冒烟测试 |
 | `electron/` | Main process, preload, IPC allowlist, menus, updater, native i18n and userData stores / 主进程、preload、IPC 白名单、菜单、自动更新、原生 i18n 与 userData 存储 |
 | `src/core/render/` | WebGL2 image renderer, stage pipeline, buffers, texture pool and curve LUT baking / WebGL2 渲染器、Stage 管线、缓冲区、纹理池与曲线 LUT 烘焙 |
 | `src/core/image/` | Import, RAW embedded preview extraction, EXIF, Orientation and downsampling / 导入、RAW 内嵌预览提取、EXIF、Orientation 与降采样 |
-| `src/core/export/` | Worker and OffscreenCanvas export / Worker 离线程导出 |
+| `src/core/export/` | Worker and OffscreenCanvas export / Worker 与 OffscreenCanvas 离线程导出 |
 | `src/core/history/`, `project/`, `batch/` | History, project serialization and batch scheduling / 撤销历史、工程序列化与批量调度 |
-| `src/components/` | Vue UI: canvas, toolbar, panels, dialogs and controls / Vue 画布、顶栏、面板、弹窗与控件 |
+| `src/components/` | Vue UI: canvas, toolbar, panels, dialogs and controls / Vue 界面：画布、顶栏、面板、弹窗与控件 |
 | `src/assets/luts/` | 19 built-in `.cube` files and manifest / 19 款内置 `.cube` 与 manifest |
 | `src/i18n/` | Renderer dictionaries for zh-CN / en / 渲染层 zh-CN / en 词典 |
 | `test/smoke/` | End-to-end offscreen smoke suite / 离屏端到端冒烟测试 |
@@ -231,19 +302,27 @@ Release flow / 发布流程：create tag / 打 tag → `npm run dist` → `npm r
 
 ## Versioning / 版本规范
 
-Strict semantic versioning `x.y.z` / 严格使用语义化版本 `x.y.z`：
+**EN:** LumEdit follows strict semantic versioning `x.y.z`.
 
-- **Major X / 主版本 X:** breaking changes / 破坏性、不兼容变更
-- **Minor Y / 次版本 Y:** backward-compatible features / 向下兼容的新功能
-- **Patch Z / 修订版本 Z:** bug fixes and security fixes only / 只修 bug / 安全修复，无新功能
+- **Major X:** breaking changes that are incompatible with older versions.
+- **Minor Y:** new features that remain backward compatible.
+- **Patch Z:** bug fixes or security fixes only, with no new features.
 
-See `CHANGELOG.md`; release packages live in `releases/vX.Y.Z/`. / 版本历史见 `CHANGELOG.md`，发布包按版本放入 `releases/vX.Y.Z/`。
+**中文：** LumEdit 严格使用语义化版本 `x.y.z`。
+
+- **主版本 X：** 破坏性、不兼容旧版本的变更。
+- **次版本 Y：** 向下兼容的新功能。
+- **修订版本 Z：** 只修 bug / 安全修复，无新功能。
+
+**EN:** See `CHANGELOG.md` for release history; packages live in `releases/vX.Y.Z/`.
+
+**中文：** 版本历史见 `CHANGELOG.md`，发布包按版本放入 `releases/vX.Y.Z/`。
 
 ---
 
 ## Author / 作者
 
 **shiraijikuu**
-- LumEdit repository / 仓库：https://github.com/shiraijikuu/lumedit
+- LumEdit repository / LumEdit 仓库：https://github.com/shiraijikuu/lumedit
 - camera-watermark / 水印项目：https://github.com/shiraijikuu/camera-watermark
 - License / 许可证：MIT
