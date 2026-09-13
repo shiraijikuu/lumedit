@@ -60,6 +60,7 @@ function stripExt(name: string): string {
 const EXT: Record<ExportFormat, string> = {
   jpeg: '.jpg',
   png: '.png',
+  png16: '.png',
   webp: '.webp',
 };
 

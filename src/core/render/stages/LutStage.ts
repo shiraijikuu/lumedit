@@ -16,6 +16,8 @@ void main() {
   gl_Position = vec4(aPos, 0.0, 1.0);
 }`;
 
+// 3D LUT 四面体插值（tetrahedral）：比硬件三线性更贴近达芬奇/Resolve/OCIO 的专业结果，
+// 尤其在低边长（17³/33³）LUT 上过渡更干净。算法参考 OpenColorIO GPU 路径（BSD-3，自实现）。
 const FRAG = /* glsl */ `#version 300 es
 precision highp float;
 precision highp sampler2D;
@@ -27,11 +29,45 @@ uniform sampler3D uLut;
 uniform float uStrength; // 0 ~ 1
 uniform float uSize;     // LUT 边长
 
+// 8 角点四面体插值：按 f 分量大小关系把单位立方体切成 6 个四面体
+vec3 sampleTetra(vec3 c) {
+  c = clamp(c, 0.0, 1.0) * (uSize - 1.0);
+  ivec3 i0 = ivec3(floor(c));
+  vec3 f = c - vec3(i0);
+  ivec3 maxCell = ivec3(int(uSize) - 1);
+  ivec3 i1 = min(i0 + ivec3(1), maxCell);
+
+  vec3 c000 = texelFetch(uLut, ivec3(i0.x, i0.y, i0.z), 0).rgb;
+  vec3 c100 = texelFetch(uLut, ivec3(i1.x, i0.y, i0.z), 0).rgb;
+  vec3 c010 = texelFetch(uLut, ivec3(i0.x, i1.y, i0.z), 0).rgb;
+  vec3 c001 = texelFetch(uLut, ivec3(i0.x, i0.y, i1.z), 0).rgb;
+  vec3 c110 = texelFetch(uLut, ivec3(i1.x, i1.y, i0.z), 0).rgb;
+  vec3 c101 = texelFetch(uLut, ivec3(i1.x, i0.y, i1.z), 0).rgb;
+  vec3 c011 = texelFetch(uLut, ivec3(i0.x, i1.y, i1.z), 0).rgb;
+  vec3 c111 = texelFetch(uLut, ivec3(i1.x, i1.y, i1.z), 0).rgb;
+
+  if (f.r > f.g) {
+    if (f.g > f.b) {            // r > g > b
+      return c000 + (c100 - c000) * f.r + (c110 - c100) * f.g + (c111 - c110) * f.b;
+    } else if (f.r > f.b) {     // r > b > g
+      return c000 + (c100 - c000) * f.r + (c101 - c100) * f.b + (c111 - c101) * f.g;
+    } else {                    // b > r > g
+      return c000 + (c001 - c000) * f.b + (c101 - c001) * f.r + (c111 - c101) * f.g;
+    }
+  } else {
+    if (f.g <= f.b) {           // b >= g >= r
+      return c000 + (c001 - c000) * f.b + (c011 - c001) * f.g + (c111 - c011) * f.r;
+    } else if (f.r > f.b) {     // g > r > b
+      return c000 + (c010 - c000) * f.g + (c110 - c010) * f.r + (c111 - c110) * f.b;
+    } else {                    // g > b > r
+      return c000 + (c010 - c000) * f.g + (c011 - c010) * f.b + (c111 - c011) * f.r;
+    }
+  }
+}
+
 void main() {
   vec4 src = texture(uSource, vTexCoord);
-  // 半 texel 偏移，避免边缘截断
-  vec3 q = src.rgb * ((uSize - 1.0) / uSize) + (0.5 / uSize);
-  vec3 graded = texture(uLut, q).rgb;
+  vec3 graded = sampleTetra(src.rgb);
   outColor = vec4(mix(src.rgb, graded, uStrength), src.a);
 }`;
 
@@ -92,8 +128,9 @@ export class LutStage implements RenderStage {
       lut.data
     );
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
-    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    // 四面体插值在 shader 内用 texelFetch 取角点，纹理本身用 NEAREST，不做硬件三线性
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);

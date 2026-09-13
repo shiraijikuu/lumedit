@@ -1,110 +1,93 @@
-// WebGL2 中间纹理池：按尺寸分桶、空闲复用，消灭拖动滑块时的逐帧纹理分配/销毁。
-// 预览管线 7 个 Stage 每帧各要一张全分辨率 RGBA8（2000px 下每张 ~16MB），
-// 复用后同尺寸稳态只需 2~3 张活跃纹理（天然的 ping-pong）。
-// 导出 Worker 的一次性渲染不挂池，自动回落到「即建即删」旧路径。
+// 纹理池：Stage 输出目标（FBO 颜色附件）按「尺寸 × 格式」分桶复用，
+// 避免拖一次滑块就反复 texImage2D 全分辨率纹理（RGBA8 ≈16MB/张、RGBA16F ≈32MB/张）。
+// 仅池自己 acquire 出来的纹理会被回收；管线传入的外来纹理 release 时直接删除。
 import type { RenderContext } from './RenderStage';
-import { createRGBA8Texture } from './gpuUtils';
+import { createTargetTexture, type TargetFormat } from './gpuUtils';
 
-/** 每个尺寸桶最多保留的空闲纹理数，超出直接销毁（防裁剪比例反复切换时内存膨胀） */
 const MAX_FREE_PER_BUCKET = 3;
 
+function bucketKey(width: number, height: number, format: TargetFormat): string {
+  return `${width}x${height}@${format}`;
+}
+
 export class TexturePool {
-  private readonly gl: WebGL2RenderingContext;
-  /** 本池创建过的全部纹理（dispose 时统一销毁，含仍在外的） */
-  private readonly owned = new Set<WebGLTexture>();
-  /** sizeKey → 空闲纹理列表 */
-  private readonly free = new Map<string, WebGLTexture[]>();
-
-  constructor(gl: WebGL2RenderingContext) {
-    this.gl = gl;
+  private free = new Map<string, WebGLTexture[]>();
+  private owned = new Set<WebGLTexture>();
+  /** 当前拥有的纹理总数（含空闲桶内待复用），与历史语义保持一致 */
+  get liveCount(): number {
+    return this.owned.size;
   }
 
-  private static key(w: number, h: number): string {
-    return `${w}x${h}`;
-  }
+  constructor(private gl: WebGL2RenderingContext) {}
 
-  acquire(width: number, height: number): WebGLTexture {
-    const key = TexturePool.key(width, height);
+  /** 借一块指定尺寸/格式的可渲染纹理（优先取空闲桶，否则新建并记录所有权） */
+  acquire(width: number, height: number, format: TargetFormat = 'rgba8'): WebGLTexture {
+    const key = bucketKey(width, height, format);
     const bucket = this.free.get(key);
-    const tex = bucket?.pop();
-    if (tex) {
-      if (bucket!.length === 0) this.free.delete(key);
-      return tex;
+    if (bucket && bucket.length > 0) {
+      return bucket.pop()!;
     }
-    const created = createRGBA8Texture(this.gl, width, height);
-    this.owned.add(created);
-    return created;
+    const tex = createTargetTexture(this.gl, width, height, format);
+    this.owned.add(tex);
+    return tex;
   }
 
-  /** 归还一张本池创建的纹理；外来纹理（如输入图）直接删除 */
-  release(texture: WebGLTexture, width: number, height: number): void {
+  /** 归还：自有纹理回收到对应桶（桶超上限则删除），外来纹理直接删除 */
+  release(texture: WebGLTexture, width: number, height: number, format: TargetFormat = 'rgba8'): void {
     if (!this.owned.has(texture)) {
       this.gl.deleteTexture(texture);
       return;
     }
-    const key = TexturePool.key(width, height);
-    let bucket = this.free.get(key);
-    if (!bucket) {
-      bucket = [];
-      this.free.set(key, bucket);
-    }
+    const key = bucketKey(width, height, format);
+    const bucket = this.free.get(key) ?? [];
     if (bucket.length >= MAX_FREE_PER_BUCKET) {
       this.owned.delete(texture);
       this.gl.deleteTexture(texture);
       return;
     }
     bucket.push(texture);
+    this.free.set(key, bucket);
   }
 
-  owns(texture: WebGLTexture): boolean {
-    return this.owned.has(texture);
-  }
-
-  /** 池内纹理数（含借出未还），测试/诊断用 */
-  get liveCount(): number {
-    return this.owned.size;
-  }
-
-  /** 空闲纹理数 */
   get freeCount(): number {
     let n = 0;
     for (const b of this.free.values()) n += b.length;
     return n;
   }
 
-  /** 上下文丢失后调用：句柄全部失效，仅清引用、不发 GL 调用 */
-  clear(): void {
-    this.owned.clear();
-    this.free.clear();
+  owns(texture: WebGLTexture): boolean {
+    return this.owned.has(texture);
   }
 
-  /** 销毁池内全部纹理（GL 上下文仍有效时用） */
+  /** 上下文丢失/切换图片时清空全部池纹理（含被借出、空闲桶内的所有自有纹理） */
   dispose(): void {
-    for (const tex of this.owned) this.gl.deleteTexture(tex);
+    for (const t of this.owned) this.gl.deleteTexture(t);
     this.owned.clear();
     this.free.clear();
   }
 }
 
-/** Stage 取目标纹理：有池走池，无池（导出 Worker / 测试直调）现建 */
+/** Stage 统一入口：按 RenderContext 决定的目标格式借纹理（无池时即时新建） */
 export function acquireTarget(
   ctx: RenderContext,
   width: number,
   height: number
 ): WebGLTexture {
-  if (ctx.pool) return ctx.pool.acquire(width, height);
-  return createRGBA8Texture(ctx.gl, width, height);
+  const format = ctx.targetFormat ?? 'rgba8';
+  if (ctx.pool) return ctx.pool.acquire(width, height, format);
+  return createTargetTexture(ctx.gl, width, height, format);
 }
 
-/** 归还管线中间纹理：有池回收复用，无池删除（输入图等外来纹理不会被池误收） */
+/** Stage 统一出口：按 RenderContext 的目标格式归还（外来纹理会被直接删除） */
 export function releaseTarget(
   ctx: RenderContext,
   texture: WebGLTexture,
   width: number,
   height: number
 ): void {
+  const format = ctx.targetFormat ?? 'rgba8';
   if (ctx.pool) {
-    ctx.pool.release(texture, width, height);
+    ctx.pool.release(texture, width, height, format);
   } else {
     ctx.gl.deleteTexture(texture);
   }

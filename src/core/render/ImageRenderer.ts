@@ -3,7 +3,13 @@ import type { EditParams } from '@/types/EditParams';
 import { cloneParams, defaultEditParams } from '@/types/EditParams';
 import { BlitProgram } from './BlitProgram';
 import { runPipeline } from './renderPipeline';
-import { attachTextureToFBO, bitmapToTextureSource } from './gpuUtils';
+import {
+  attachTextureToFBO,
+  bitmapToTextureSource,
+  detectFloatRenderTarget,
+  readFramebufferBytes,
+  type TargetFormat,
+} from './gpuUtils';
 import { TexturePool, releaseTarget } from './texturePool';
 
 export class ImageRenderer {
@@ -30,6 +36,8 @@ export class ImageRenderer {
   private readonly restoreHooks: Array<() => void> = [];
   /** 中间纹理池：拖动滑块时逐帧复用，不再反复分配/销毁全分辨率纹理 */
   private pool: TexturePool | null = null;
+  /** 中间渲染目标格式：支持浮点颜色缓冲时用 RGBA16F（高精度），否则回退 RGBA8 */
+  private targetFormat: TargetFormat = 'rgba8';
   /** rAF 合帧：一帧内的多次 setParams 只跑一次管线 */
   private rafPending = false;
 
@@ -44,7 +52,9 @@ export class ImageRenderer {
     if (!gl) throw new Error('WebGL2 not supported');
 
     this.gl = gl;
-    this.context = { gl, width: 0, height: 0 };
+    // 半浮点能力探测：决定整条管线中间纹理的精度（不支持则安全回退 8bit）
+    this.targetFormat = detectFloatRenderTarget(gl) ? 'rgba16f' : 'rgba8';
+    this.context = { gl, width: 0, height: 0, targetFormat: this.targetFormat };
 
     // 必须 preventDefault，否则上下文永久销毁
     canvas.addEventListener('webglcontextlost', this.onContextLost);
@@ -281,8 +291,8 @@ export class ImageRenderer {
       fbo = attachTextureToFBO(gl, tex);
       // attachTextureToFBO 返回前会解绑，读像素前重新绑定
       gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-      const pixels = new Uint8Array(size * size * 4);
-      gl.readPixels(sx, sy, size, size, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      // 管线输出可能是 RGBA16F，必须按目标格式读回（内部统一量化到 0..255）
+      const pixels = readFramebufferBytes(gl, sx, sy, size, size, this.targetFormat);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       let r = 0, g = 0, b = 0;
       const n = size * size;
@@ -455,8 +465,8 @@ export class ImageRenderer {
       this.context.height = savedH;
       return null;
     }
-    const pixels = new Uint8Array(W * H * 4);
-    gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    // 管线末端可能是 RGBA16F：按目标格式 FLOAT 读回并量化到 0..255（用 UNSIGNED_BYTE 会 INVALID_OPERATION）
+    const pixels = readFramebufferBytes(gl, 0, 0, W, H, this.targetFormat);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.deleteFramebuffer(fbo);
     if (out.texture !== this.inputTexture) releaseTarget(this.context, out.texture, W, H);
@@ -470,7 +480,7 @@ export class ImageRenderer {
     const raw = document.createElement('canvas');
     raw.width = W;
     raw.height = H;
-    raw.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(pixels.buffer), W, H), 0, 0);
+    raw.getContext('2d')!.putImageData(new ImageData(pixels, W, H), 0, 0);
     const outCanvas = document.createElement('canvas');
     outCanvas.width = cw;
     outCanvas.height = ch;
@@ -525,7 +535,7 @@ export class ImageRenderer {
     this.inputTexture = null;
     this.currentTexture = null;
     // 池内句柄已全部失效：只清引用不发 GL 调用
-    this.pool?.clear();
+    this.pool?.dispose();
     this.pool = null;
     this.context.pool = undefined;
     this.gl = null;
@@ -542,6 +552,9 @@ export class ImageRenderer {
 
     this.gl = gl;
     this.context.gl = gl;
+    // 新上下文需重新探测浮点能力并重建纹理池绑定
+    this.targetFormat = detectFloatRenderTarget(gl) ? 'rgba16f' : 'rgba8';
+    this.context.targetFormat = this.targetFormat;
 
     // 重新上传原图
     this.uploadInputTexture();

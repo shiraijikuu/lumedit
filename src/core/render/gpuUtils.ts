@@ -102,6 +102,89 @@ export function createRGBA8Texture(
   return tex;
 }
 
+/** 管线中间渲染目标格式：8bit 回退 / 16F 半浮点（高精度、可暂存 >1 高光） */
+export type TargetFormat = 'rgba8' | 'rgba16f';
+
+/**
+ * 探测当前 WebGL2 上下文能否把 RGBA16F 作为「颜色渲染目标」。
+ * WebGL2 里 16F 作为可采样纹理是核心能力，但渲染到 16F 必须启用 EXT_color_buffer_float；
+ * 且 RGB16F 不可渲染，只能用 RGBA16F。仅 getExtension 成功不代表驱动真能渲染，
+ * 必须真建一个 1×1 FBO 检查完整性（部分 SwiftShader / 老 ANGLE 会在此失败）。
+ */
+export function detectFloatRenderTarget(gl: WebGL2RenderingContext): boolean {
+  if (!gl.getExtension('EXT_color_buffer_float')) return false;
+  let ok = false;
+  const tex = gl.createTexture();
+  const fbo = gl.createFramebuffer();
+  if (tex && fbo) {
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, 1, 1, 0, gl.RGBA, gl.HALF_FLOAT, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+  if (fbo) gl.deleteFramebuffer(fbo);
+  if (tex) gl.deleteTexture(tex);
+  return ok;
+}
+
+/** 按格式分配「可渲染中间纹理」（无初始数据）。RGBA16F 的线性过滤在 WebGL2 为核心可过滤格式，无需额外扩展。 */
+export function createTargetTexture(
+  gl: WebGL2RenderingContext,
+  width: number,
+  height: number,
+  format: TargetFormat = 'rgba8'
+): WebGLTexture {
+  const tex = gl.createTexture();
+  if (!tex) throw new Error('createTargetTexture: createTexture failed');
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    format === 'rgba16f' ? gl.RGBA16F : gl.RGBA8,
+    width,
+    height,
+    0,
+    gl.RGBA,
+    format === 'rgba16f' ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE,
+    null
+  );
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+  return tex;
+}
+
+/**
+ * 从「当前已绑定的 FBO」读回一块像素，统一输出 0..255 的 RGBA。
+ * rgba16f 颜色缓冲用 UNSIGNED_BYTE 读会 INVALID_OPERATION，必须 FLOAT + Float32Array 再量化；
+ * rgba8 直接按字节读。调用方负责绑定/解绑 FBO。
+ */
+export function readFramebufferBytes(
+  gl: WebGL2RenderingContext,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  format: TargetFormat
+): Uint8ClampedArray {
+  const count = width * height * 4;
+  if (format === 'rgba16f') {
+    const f32 = new Float32Array(count);
+    gl.readPixels(x, y, width, height, gl.RGBA, gl.FLOAT, f32);
+    const out = new Uint8ClampedArray(count);
+    for (let i = 0; i < count; i++) out[i] = Math.round(f32[i] * 255);
+    return out;
+  }
+  const out = new Uint8ClampedArray(count);
+  gl.readPixels(x, y, width, height, gl.RGBA, gl.UNSIGNED_BYTE, out);
+  return out;
+}
+
 /**
  * 把输入位图绘制到 OffscreenCanvas 后作为纹理源返回。
  *

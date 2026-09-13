@@ -1,15 +1,15 @@
 {
-  "version": "0.3.0",
-  "build": 5,
-  "coreVersion": "0.3.0",
-  "shellVersion": "0.3.0",
+  "version": "0.4.0",
+  "build": 6,
+  "coreVersion": "0.4.0",
+  "shellVersion": "0.4.0",
   "releaseDate": "2026-09-13",
   "downloads": {
-    "windows": "https://github.com/shiraijikuu/lumedit/releases/download/v0.3.0/LumEdit-0.3.0-setup.exe"
+    "windows": "https://github.com/shiraijikuu/lumedit/releases/download/v0.4.0/LumEdit-0.4.0-setup.exe"
   },
-  "download_url": "https://github.com/shiraijikuu/lumedit/releases/download/v0.3.0/LumEdit-0.3.0-setup.exe",
+  "download_url": "https://github.com/shiraijikuu/lumedit/releases/download/v0.4.0/LumEdit-0.4.0-setup.exe",
   "notes": {
-    "zh": "LumEdit v0.3.0：调色预设、白平衡吸管、局部渐变、分屏对比、剪裁警告、复制到剪贴板、导出 LUT、EXIF 面板、图片会话条、最近打开与会话恢复、便携版。",
-    "en": "LumEdit v0.3.0: presets, white balance picker, local gradients, split compare, clipping warning, copy to clipboard, LUT export, EXIF panel, filmstrip session, recent files & session restore, portable build."
+    "zh": "LumEdit v0.4.0：半浮点渲染管线、3D LUT 四面体插值、专业示波器（波形/矢量/RGB）、Soft Clip、HSL 取色限定器、多局部蒙版叠加、16bit PNG 导出。",
+    "en": "LumEdit v0.4.0: half-float pipeline, tetrahedral LUT interpolation, scopes, soft clip, HSL qualifier, multi-mask stacking, 16-bit PNG export."
   }
 }

@@ -139,6 +139,36 @@ export interface GradationParams {
   tint: number;
 }
 
+/** 多局部蒙版列表项：在单渐变参数上附加稳定 id（供 UI 列表 key 与选中） */
+export interface GradationItem extends GradationParams {
+  id: string;
+}
+
+// ---------------- 第二档：HSL 取色限定器（二级调色，仅完整版） ----------------
+export interface QualifierParams {
+  enabled: boolean;
+  /** 中心色相 0~360（吸管点选像素后设定） */
+  centerHue: number;
+  /** 色相选中半宽（度），0~180 */
+  hueRange: number;
+  /** 选区边界柔化（度），0~60 */
+  hueFeather: number;
+  /** 选区内曝光（EV）-2 ~ 2 */
+  exposure: number;
+  /** 选区内色温 -1 ~ 1 */
+  temperature: number;
+  /** 选区内饱和度 -1 ~ 1 */
+  saturation: number;
+}
+
+// ---------------- 第二档：Soft Clip 高光/阴影滚降（仅完整版） ----------------
+export interface ToneRollParams {
+  /** 高光滚降 0~1：把接近白的高光平滑压回、保住层次（0=关闭） */
+  highlights: number;
+  /** 阴影滚降 0~1：把接近黑的阴影平滑压实（0=关闭） */
+  shadows: number;
+}
+
 export interface EditParams {
   geometry: GeometryParams;
   adjust: AdjustParams;
@@ -150,8 +180,14 @@ export interface EditParams {
   colorGrade: ColorGradeParams;
   /** 第二档：效果 */
   effects: EffectsParams;
-  /** v0.3.0：局部渐变 */
+  /** v0.3.0：局部渐变（兼容字段，新工程以 gradations 为准；旧工程由 ensureParams 迁移） */
   gradation: GradationParams;
+  /** v0.4.0：多局部蒙版（线性/径向叠加，上限 8） */
+  gradations: GradationItem[];
+  /** v0.4.0：HSL 取色限定器（二级调色） */
+  qualifier: QualifierParams;
+  /** v0.4.0：Soft Clip 高光/阴影滚降 */
+  tonemap: ToneRollParams;
   lut: LutParams;
   /** P1：camera-watermark 水印（管线最后一步，导出阶段离屏合成） */
   watermark?: WatermarkParams;
@@ -224,6 +260,20 @@ export const defaultEditParams: EditParams = {
     temperature: 0,
     tint: 0,
   },
+  gradations: [],
+  qualifier: {
+    enabled: false,
+    centerHue: 0,
+    hueRange: 30,
+    hueFeather: 15,
+    exposure: 0,
+    temperature: 0,
+    saturation: 0,
+  },
+  tonemap: {
+    highlights: 0,
+    shadows: 0,
+  },
   lut: {
     id: null,
     path: null,
@@ -231,6 +281,48 @@ export const defaultEditParams: EditParams = {
     strength: 0,
   },
 };
+
+/** 多局部蒙版数量上限（shader 多 pass / UI 列表共同约束） */
+export const MAX_GRADATIONS = 8;
+
+let gradSeq = 0;
+/** 新建一个默认蒙版（线性，水平贯穿，中性参数），id 进程内唯一 */
+export function createGradation(type: 'linear' | 'radial' = 'linear'): GradationItem {
+  gradSeq += 1;
+  return {
+    id: `g_${Date.now().toString(36)}_${gradSeq}`,
+    enabled: true,
+    type,
+    x1: 0.15,
+    y1: 0.5,
+    x2: 0.85,
+    y2: 0.5,
+    exposure: 0,
+    temperature: 0,
+    tint: 0,
+  };
+}
+
+function clampNum(v: unknown, lo: number, hi: number, fallback: number): number {
+  const n = typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+  return Math.min(hi, Math.max(lo, n));
+}
+
+/** 把任意（可能来自旧工程/损坏快照的）蒙版数据补全为合法 GradationItem */
+export function normalizeGradation(g: Partial<GradationItem> | null | undefined, idx = 0): GradationItem {
+  return {
+    id: (g && typeof g.id === 'string' && g.id) || `g${idx + 1}`,
+    enabled: !!g?.enabled,
+    type: g?.type === 'radial' ? 'radial' : 'linear',
+    x1: clampNum(g?.x1, -0.5, 1.5, 0.15),
+    y1: clampNum(g?.y1, -0.5, 1.5, 0.5),
+    x2: clampNum(g?.x2, -0.5, 1.5, 0.85),
+    y2: clampNum(g?.y2, -0.5, 1.5, 0.5),
+    exposure: clampNum(g?.exposure, -2, 2, 0),
+    temperature: clampNum(g?.temperature, -1, 1, 0),
+    tint: clampNum(g?.tint, -1, 1, 0),
+  };
+}
 
 /**
  * 用默认值补齐缺失字段（兼容旧版工程文件 / 历史撤销快照）。
@@ -285,6 +377,14 @@ export function ensureParams(p: Partial<EditParams> | null | undefined): EditPar
     out.gradation.tint = gp.tint ?? 0;
   }
   if (p.lut) Object.assign(out.lut, p.lut);
+  if (Array.isArray(p.gradations)) {
+    out.gradations = p.gradations.slice(0, MAX_GRADATIONS).map((g, i) => normalizeGradation(g, i));
+  } else if (p.gradation?.enabled) {
+    // 旧版只有单个 gradation：迁移为多蒙版列表第一项
+    out.gradations = [normalizeGradation({ ...p.gradation, id: 'g1' }, 0)];
+  }
+  if (p.qualifier) Object.assign(out.qualifier, p.qualifier);
+  if (p.tonemap) Object.assign(out.tonemap, p.tonemap);
   if (p.watermark) out.watermark = p.watermark;
   return out;
 }
@@ -310,6 +410,9 @@ export function cloneParams(p: EditParams): EditParams {
     },
     effects: { ...p.effects },
     gradation: { ...p.gradation },
+    gradations: Array.isArray(p.gradations) ? p.gradations.map((g) => ({ ...g })) : [],
+    qualifier: { ...defaultEditParams.qualifier, ...(p.qualifier ?? {}) },
+    tonemap: { ...defaultEditParams.tonemap, ...(p.tonemap ?? {}) },
     lut: { ...p.lut },
   };
   if (p.watermark) {
@@ -330,6 +433,8 @@ export interface PresetColorParams {
   hsl: HslParams;
   colorGrade: ColorGradeParams;
   effects: EffectsParams;
+  qualifier: QualifierParams;
+  tonemap: ToneRollParams;
   lut: LutParams;
 }
 
@@ -342,6 +447,8 @@ export function pickPresetParams(p: EditParams): PresetColorParams {
     hsl: c.hsl,
     colorGrade: c.colorGrade,
     effects: c.effects,
+    qualifier: c.qualifier,
+    tonemap: c.tonemap,
     lut: c.lut,
   };
 }

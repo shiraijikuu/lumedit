@@ -12,8 +12,9 @@
           {{ f.label }}
         </button>
       </div>
+      <p v-if="is16" class="hint">{{ t('exportPanel.png16Hint') }}</p>
       <SliderRow
-        v-if="store.exportOptions.format !== 'png'"
+        v-if="store.exportOptions.format !== 'png' && !is16"
         :label="t('exportPanel.quality')"
         :model-value="store.exportOptions.quality"
         :min="0.3"
@@ -25,12 +26,13 @@
       />
     </div>
 
-    <div class="panel-section">
+    <div class="panel-section" :class="{ disabled: is16 }">
       <div class="panel-title">{{ t('exportPanel.outputSize') }}</div>
       <div class="segmented">
         <button
           v-for="s in scales"
           :key="s.v"
+          :disabled="is16"
           :class="{ active: store.exportOptions.scale === s.v }"
           @click="store.exportOptions.scale = s.v"
         >
@@ -41,14 +43,15 @@
         <button
           v-for="t2 in [1080, 2000]"
           :key="t2"
+          :disabled="!longEdge || is16"
           :class="{ active: isLongEdgeActive(t2) }"
-          :disabled="!longEdge"
           @click="setLongEdge(t2)"
         >
           {{ t('exportPanel.longEdge', { v: t2 }) }}
         </button>
       </div>
-      <p v-if="longEdge && store.exportOptions.scale < 1" class="hint">
+      <p v-if="is16" class="hint">{{ t('exportPanel.png16FullRes') }}</p>
+      <p v-else-if="longEdge && store.exportOptions.scale < 1" class="hint">
         {{ t('exportPanel.outPx', { w: Math.round(store.meta!.origWidth * store.exportOptions.scale), h: Math.round(store.meta!.origHeight * store.exportOptions.scale) }) }}
       </p>
     </div>
@@ -102,8 +105,10 @@ const store = useEditorStore();
 const formats = [
   { v: 'jpeg' as const, label: 'JPG' },
   { v: 'png' as const, label: 'PNG' },
+  { v: 'png16' as const, label: 'PNG 16' },
   { v: 'webp' as const, label: 'WebP' },
 ];
+const is16 = computed(() => store.exportOptions.format === 'png16');
 const scales = [
   { v: 1, label: '100%' },
   { v: 0.75, label: '75%' },
@@ -147,5 +152,8 @@ function isLongEdgeActive(target: number): boolean {
   width: 100%;
   padding: 9px;
   font-size: 13px;
+}
+.panel-section.disabled {
+  opacity: 0.55;
 }
 </style>

@@ -8,6 +8,7 @@ import {
   type ProgramBundle,
 } from '../gpuUtils';
 import { acquireTarget, releaseTarget } from '../texturePool';
+import { SRGB_TRANSFER_GLSL } from '../chunks/colorSpace.glsl';
 
 const VERT = /* glsl */ `#version 300 es
 in vec2 aPos;
@@ -31,7 +32,7 @@ uniform float uContrast;
 uniform float uHighlights, uShadows, uWhites, uBlacks;
 uniform float uTemperature, uTint, uClarity, uDehaze;
 uniform float uSaturation, uVibrance;
-
+${SRGB_TRANSFER_GLSL}
 float luma(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
 
 void main() {
@@ -48,15 +49,17 @@ void main() {
   }
   localC /= 9.0;
 
-  // 1. 曝光：EV 档线性缩放
-  c *= exp2(uExposure);
-
-  // 2. 白平衡：色温（暖 r+ b-）/ 色调（品 r,b+ g-，绿反向）
-  c.r += uTemperature * 0.06 * (1.0 - c.r * 0.5);
-  c.b -= uTemperature * 0.06 * (1.0 - c.b * 0.5);
-  c.r += uTint * 0.05;
-  c.b += uTint * 0.05;
-  c.g -= uTint * 0.05;
+  // 1+2. 曝光与白平衡是「光量」运算，必须在线性光域进行：
+  // 在 sRGB 编码值上直接乘 exp2 / 加色偏会导致中间调发灰、白平衡染色不均。
+  vec3 lin = srgbToLinear(c);
+  lin *= exp2(uExposure);
+  // 白平衡：色温（暖=增红减蓝）、色调（品=增红蓝减绿），线性域乘性增益
+  lin.r *= 1.0 + uTemperature * 0.12;
+  lin.b *= 1.0 - uTemperature * 0.12;
+  lin.r *= 1.0 + uTint * 0.10;
+  lin.b *= 1.0 + uTint * 0.10;
+  lin.g *= 1.0 - uTint * 0.10;
+  c = linearToSrgb(max(lin, 0.0));
 
   // 3. 亮度（加性）
   c += uBrightness;

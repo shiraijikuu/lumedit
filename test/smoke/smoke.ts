@@ -15,7 +15,13 @@ import { serializeProject, parseProject } from '../../src/core/project/projectFi
 import { compareSemver, resolveDownloadUrl } from '../../src/core/update/updateService';
 import { createFileAccessPolicy } from '../../electron/fileAccess';
 import { TexturePool } from '../../src/core/render/texturePool';
+import {
+  detectFloatRenderTarget,
+  createTargetTexture,
+  readFramebufferBytes,
+} from '../../src/core/render/gpuUtils';
 import { bakeLutFromParams } from '../../src/core/render/lut/bakeCurrentLut';
+import { BlitProgram } from '../../src/core/render/BlitProgram';
 import { GradationStage } from '../../src/core/render/stages/GradationStage';
 import kodakCube from '../../src/assets/luts/kodak-2383.cube';
 import {
@@ -29,7 +35,11 @@ import { CurveStage } from '../../src/core/render/stages/CurveStage';
 import { HslStage } from '../../src/core/render/stages/HslStage';
 import { ColorGradeStage } from '../../src/core/render/stages/ColorGradeStage';
 import { EffectsStage } from '../../src/core/render/stages/EffectsStage';
-import { ensureParams, cloneParams, linearCurve, HSL_HUES } from '../../src/types/EditParams';
+import { ToneRollStage } from '../../src/core/render/stages/ToneRollStage';
+import { QualifierStage } from '../../src/core/render/stages/QualifierStage';
+import { ensureParams, cloneParams, linearCurve, HSL_HUES, createGradation, normalizeGradation, MAX_GRADATIONS } from '../../src/types/EditParams';
+import { encodePng16 } from '../../src/core/export/png16';
+import { analyzeScopes, rgbToCbCr, vectorscopeTargets } from '../../src/core/scope/scopes';
 import zhDict from '../../src/i18n/locales/zh-CN';
 import enDict from '../../src/i18n/locales/en';
 
@@ -693,7 +703,8 @@ async function testLutBake(): Promise<void> {
   const text2 = await bakeLutFromParams(p2);
   const l2 = text2.trim().split(/\r?\n/).slice(4);
   const mid = l2[(8 * 17 * 17) + (8 * 17) + 8].split(/\s+/).map(Number);
-  ok('曝光 +1 烘焙中点变亮（≈1.0）', mid[0] > 0.9, `v=${mid[0]}`);
+  // 局部线性化后：0.5 sRGB→linear(0.214)→×2(+1EV)→sRGB≈0.686，变亮但不硬切（旧 gamma 直乘会到 1.0）
+  ok('曝光 +1 在线性域翻倍（中点≈0.69）', mid[0] > 0.64 && mid[0] < 0.74, `v=${mid[0]}`);
 }
 
 // ---------- 11. 局部渐变 Stage ----------
@@ -722,7 +733,7 @@ async function testGradation(): Promise<void> {
   const ctx1: RenderContext = { gl, width: 32, height: 32 };
   const out = stage.execute(input, p1, ctx1);
   const px = readPixel(gl, out, 32, 32);
-  ok('蒙版中心曝光 +2（≈255）', px[0] >= 250, `center=${px[0]}`);
+  ok('蒙版中心曝光 +2 线性提亮（≈238，不硬切）', px[0] >= 220 && px[0] <= 254, `center=${px[0]}`);
 
   // 角落像素应基本不变（mask≈0）
   const fbo = gl.createFramebuffer()!;
@@ -765,6 +776,472 @@ async function testGradation(): Promise<void> {
   bmp.close();
 }
 
+// ---------- 12. 色彩引擎：半浮点 / 局部线性化 / 四面体 LUT ----------
+function readPixelFmt(
+  gl: WebGL2RenderingContext,
+  tex: WebGLTexture,
+  w: number,
+  h: number,
+  fmt: 'rgba8' | 'rgba16f'
+): Uint8ClampedArray {
+  const fbo = gl.createFramebuffer()!;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  assert(gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE, 'readPixelFmt FBO 不完整');
+  const px = readFramebufferBytes(gl, Math.floor(w / 2), Math.floor(h / 2), 1, 1, fmt);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.deleteFramebuffer(fbo);
+  return px;
+}
+
+async function testColorEngine(): Promise<void> {
+  logs.push('[color engine: half-float / linear / tetra LUT]');
+  const gl = createGL();
+  const floatOK = detectFloatRenderTarget(gl);
+  ok('浮点能力探测返回布尔', typeof floatOK === 'boolean', `floatOK=${floatOK}`);
+
+  // M0：RGBA16F 作为渲染目标 + FLOAT 读回（仅扩展可用时）
+  if (floatOK) {
+    const t = createTargetTexture(gl, 8, 8, 'rgba16f');
+    const fbo = gl.createFramebuffer()!;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+    ok('RGBA16F FBO 完整可渲染', gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE);
+    gl.clearColor(0.5, 0.5, 0.5, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    const rb = readFramebufferBytes(gl, 0, 0, 1, 1, 'rgba16f');
+    ok('RGBA16F FLOAT 读回≈128', Math.abs(rb[0] - 128) <= 2, `r=${rb[0]}`);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.deleteFramebuffer(fbo);
+    gl.deleteTexture(t);
+  } else {
+    logs.push('  （当前 SwiftShader 不支持 EXT_color_buffer_float，16F 路径由真机覆盖）');
+  }
+
+  // M0：纹理池按「尺寸×格式」分桶
+  {
+    const pool = new TexturePool(gl);
+    const a = pool.acquire(8, 8, 'rgba8');
+    const b = pool.acquire(8, 8, 'rgba16f');
+    ok('同尺寸不同格式不复用', a !== b);
+    pool.release(a, 8, 8, 'rgba8');
+    pool.release(b, 8, 8, 'rgba16f');
+    const a2 = pool.acquire(8, 8, 'rgba8');
+    const b2 = pool.acquire(8, 8, 'rgba16f');
+    ok('同格式各自复用', a2 === a && b2 === b);
+    pool.release(a2, 8, 8, 'rgba8');
+    pool.release(b2, 8, 8, 'rgba16f');
+    pool.dispose();
+  }
+
+  // M2：中性参数 sRGB↔linear 往返闭合
+  {
+    const bmp = await solidBitmap(16, 16, [0.5, 0.4, 0.3]);
+    const input = uploadTexture(gl, bmp);
+    const stage = new AdjustStage();
+    const p = params();
+    for (const fmt of ['rgba8', 'rgba16f'] as const) {
+      if (fmt === 'rgba16f' && !floatOK) continue;
+      const ctx: RenderContext = { gl, width: 16, height: 16, targetFormat: fmt };
+      const out = stage.execute(input, p, ctx);
+      const px = readPixelFmt(gl, out, 16, 16, fmt);
+      const src = [128, 102, 77];
+      const d = Math.max(Math.abs(px[0] - src[0]), Math.abs(px[1] - src[1]), Math.abs(px[2] - src[2]));
+      ok(`中性影调线性往返闭合（${fmt}，差≤2）`, d <= 2, `d=${d}`);
+      if (out !== input) gl.deleteTexture(out);
+    }
+    stage.destroy();
+    gl.deleteTexture(input);
+    bmp.close();
+  }
+
+  // M2：曝光 +1EV 对 0.5 灰 → sRGB≈0.686(≈175)，物理翻倍且不硬切
+  {
+    const bmp = await solidBitmap(16, 16, [0.5, 0.5, 0.5]);
+    const input = uploadTexture(gl, bmp);
+    const stage = new AdjustStage();
+    const p = params();
+    p.adjust.exposure = 1;
+    const ctx: RenderContext = { gl, width: 16, height: 16 };
+    const out = stage.execute(input, p, ctx);
+    const px = readPixel(gl, out, 16, 16);
+    ok('曝光+1EV 中点≈175（线性翻倍）', Math.abs(px[0] - 175) <= 4, `r=${px[0]}`);
+    stage.destroy();
+    if (out !== input) gl.deleteTexture(out);
+    gl.deleteTexture(input);
+    bmp.close();
+  }
+
+  // M2：色温调暖 → 红通道高于蓝通道
+  {
+    const bmp = await solidBitmap(16, 16, [0.5, 0.5, 0.5]);
+    const input = uploadTexture(gl, bmp);
+    const stage = new AdjustStage();
+    const p = params();
+    p.adjust.temperature = 1;
+    const ctx: RenderContext = { gl, width: 16, height: 16 };
+    const out = stage.execute(input, p, ctx);
+    const px = readPixel(gl, out, 16, 16);
+    ok('色温+暖：红>蓝', px[0] > px[2], `r=${px[0]} b=${px[2]}`);
+    stage.destroy();
+    if (out !== input) gl.deleteTexture(out);
+    gl.deleteTexture(input);
+    bmp.close();
+  }
+
+  // M3：identity cube 四面体插值≈输入
+  {
+    const N = 5;
+    const lines = ['LUT_3D_SIZE 5'];
+    for (let b = 0; b < N; b++)
+      for (let g = 0; g < N; g++)
+        for (let r = 0; r < N; r++) lines.push(`${r / (N - 1)} ${g / (N - 1)} ${b / (N - 1)}`);
+    const stage = new LutStage();
+    stage.setLut(gl, cubeToLutData(parseCube(lines.join('\n'))));
+    const bmp = await solidBitmap(16, 16, [0.5, 0.4, 0.3]);
+    const input = uploadTexture(gl, bmp);
+    const p = params();
+    p.lut.id = 'id';
+    p.lut.strength = 1;
+    const ctx: RenderContext = { gl, width: 16, height: 16 };
+    const out = stage.execute(input, p, ctx);
+    const px = readPixel(gl, out, 16, 16);
+    const src = [128, 102, 77];
+    const d = Math.max(Math.abs(px[0] - src[0]), Math.abs(px[1] - src[1]), Math.abs(px[2] - src[2]));
+    ok('四面体 identity LUT 误差≤2', d <= 2, `d=${d}`);
+    stage.destroy();
+    if (out !== input) gl.deleteTexture(out);
+    gl.deleteTexture(input);
+    bmp.close();
+  }
+
+  // M1：同参数下 8bit 与 16F 管线结果一致（半浮点只提精度、不改结果）
+  if (floatOK) {
+    const bmp = await solidBitmap(16, 16, [0.6, 0.3, 0.2]);
+    const input = uploadTexture(gl, bmp);
+    const p = params();
+    p.adjust.contrast = 0.2;
+    const s8 = new AdjustStage();
+    const s16 = new AdjustStage();
+    const o8 = s8.execute(input, p, { gl, width: 16, height: 16, targetFormat: 'rgba8' });
+    const o16 = s16.execute(input, p, { gl, width: 16, height: 16, targetFormat: 'rgba16f' });
+    const q8 = readPixel(gl, o8, 16, 16);
+    const q16 = readPixelFmt(gl, o16, 16, 16, 'rgba16f');
+    const d = Math.max(Math.abs(q8[0] - q16[0]), Math.abs(q8[1] - q16[1]), Math.abs(q8[2] - q16[2]));
+    ok('同参数 8bit/16F 结果一致（差≤3）', d <= 3, `d=${d}`);
+    s8.destroy();
+    s16.destroy();
+    if (o8 !== input) gl.deleteTexture(o8);
+    if (o16 !== input) gl.deleteTexture(o16);
+    gl.deleteTexture(input);
+    bmp.close();
+  }
+}
+
+async function testAdvancedColor(): Promise<void> {
+  logs.push('[advanced: soft clip / qualifier / multi-mask]');
+  const gl = createGL();
+
+  // ---------- M5 Soft Clip ----------
+  {
+    const stage = new ToneRollStage();
+    const p = params();
+    const bmp = await solidBitmap(16, 16, [0.3, 0.3, 0.3]);
+    const input = uploadTexture(gl, bmp);
+    // 全 0 直通（引用相等）
+    const same = stage.execute(input, p, { gl, width: 16, height: 16 });
+    ok('Soft Clip 全 0 直通', same === input);
+
+    // 阈值以下不变：highlights=1 阈值 th=0.4，0.3 灰保持
+    const pHi = params();
+    pHi.tonemap.highlights = 1;
+    const bLo = await solidBitmap(16, 16, [0.3, 0.3, 0.3]);
+    const inLo = uploadTexture(gl, bLo);
+    const outLo = stage.execute(inLo, pHi, { gl, width: 16, height: 16 });
+    const pxLo = readPixel(gl, outLo, 16, 16);
+    ok('Soft Clip 高光阈值以下不变（≈77）', Math.abs(pxLo[0] - 77) <= 2, `r=${pxLo[0]}`);
+    if (outLo !== inLo) gl.deleteTexture(outLo);
+    gl.deleteTexture(inLo);
+    bLo.close();
+
+    // 纯白被压回（k=1 → 0.7≈178），亮部被救回
+    const bHi = await solidBitmap(16, 16, [1, 1, 1]);
+    const inHi = uploadTexture(gl, bHi);
+    const outHi = stage.execute(inHi, pHi, { gl, width: 16, height: 16 });
+    const pxHi = readPixel(gl, outHi, 16, 16);
+    ok('Soft Clip 高光把白压回≈178', Math.abs(pxHi[0] - 178) <= 4, `r=${pxHi[0]}`);
+    if (outHi !== inHi) gl.deleteTexture(outHi);
+    gl.deleteTexture(inHi);
+    bHi.close();
+
+    // 阴影：shadows=1 阈值 th=0.6，0.8 灰不变
+    const pSh = params();
+    pSh.tonemap.shadows = 1;
+    const bUp = await solidBitmap(16, 16, [0.8, 0.8, 0.8]);
+    const inUp = uploadTexture(gl, bUp);
+    const outUp = stage.execute(inUp, pSh, { gl, width: 16, height: 16 });
+    const pxUp = readPixel(gl, outUp, 16, 16);
+    ok('Soft Clip 阴影阈值以上不变（≈204）', Math.abs(pxUp[0] - 204) <= 2, `r=${pxUp[0]}`);
+    if (outUp !== inUp) gl.deleteTexture(outUp);
+    gl.deleteTexture(inUp);
+    bUp.close();
+
+    stage.destroy();
+    gl.deleteTexture(input);
+    bmp.close();
+  }
+
+  // ---------- M6a 取色限定器 ----------
+  {
+    const stage = new QualifierStage();
+    const p = params();
+    // 未启用直通
+    const b0 = await solidBitmap(16, 16, [0.5, 0, 0]);
+    const in0 = uploadTexture(gl, b0);
+    ok('取色限定器未启用直通', stage.execute(in0, p, { gl, width: 16, height: 16 }) === in0);
+
+    const pq = params();
+    pq.qualifier.enabled = true;
+    pq.qualifier.centerHue = 0; // 红
+    pq.qualifier.hueRange = 30;
+    pq.qualifier.hueFeather = 15;
+    pq.qualifier.exposure = 1; // +1EV
+
+    // 红色半调被提亮（>150）
+    const bR = await solidBitmap(16, 16, [0.5, 0, 0]);
+    const inR = uploadTexture(gl, bR);
+    const outR = stage.execute(inR, pq, { gl, width: 16, height: 16 });
+    const pxR = readPixel(gl, outR, 16, 16);
+    ok('取色限定器选中红色并提亮（>150）', pxR[0] > 150, `r=${pxR[0]}`);
+    if (outR !== inR) gl.deleteTexture(outR);
+    gl.deleteTexture(inR);
+    bR.close();
+
+    // 蓝色半调不在选区，保持 ≈128
+    const bB = await solidBitmap(16, 16, [0, 0, 0.5]);
+    const inB = uploadTexture(gl, bB);
+    const outB = stage.execute(inB, pq, { gl, width: 16, height: 16 });
+    const pxB = readPixel(gl, outB, 16, 16);
+    ok('取色限定器不影响蓝色（b≈128）', Math.abs(pxB[2] - 128) <= 3, `b=${pxB[2]}`);
+    if (outB !== inB) gl.deleteTexture(outB);
+    gl.deleteTexture(inB);
+    bB.close();
+
+    stage.destroy();
+    gl.deleteTexture(in0);
+    b0.close();
+  }
+
+  // ---------- M6b 多蒙版叠加 ----------
+  {
+    const stage = new GradationStage();
+    const pEmpty = params();
+    const bE = await solidBitmap(16, 16, [0.5, 0.5, 0.5]);
+    const inE = uploadTexture(gl, bE);
+    ok('多蒙版空列表直通', stage.execute(inE, pEmpty, { gl, width: 16, height: 16 }) === inE);
+
+    const mk = (id: string, ev: number) => ({
+      id,
+      enabled: true,
+      type: 'linear' as const,
+      x1: 0,
+      y1: 0.5,
+      x2: 1,
+      y2: 0.5,
+      exposure: ev,
+      temperature: 0,
+      tint: 0,
+    });
+    const pOne = params();
+    pOne.gradations = [mk('a', 1)];
+    const pTwo = params();
+    pTwo.gradations = [mk('a', 1), mk('b', 1)];
+
+    const b1 = await solidBitmap(16, 16, [0.5, 0.5, 0.5]);
+    const in1 = uploadTexture(gl, b1);
+    const o1 = stage.execute(in1, pOne, { gl, width: 16, height: 16 });
+    const q1 = readPixel(gl, o1, 16, 16);
+    const b2 = await solidBitmap(16, 16, [0.5, 0.5, 0.5]);
+    const in2 = uploadTexture(gl, b2);
+    const o2 = stage.execute(in2, pTwo, { gl, width: 16, height: 16 });
+    const q2 = readPixel(gl, o2, 16, 16);
+    ok('两个蒙版叠加比单个更亮', q2[0] > q1[0], `one=${q1[0]} two=${q2[0]}`);
+    ok('单蒙版中心确实提亮（>128）', q1[0] > 128, `one=${q1[0]}`);
+    if (o1 !== in1) gl.deleteTexture(o1);
+    if (o2 !== in2) gl.deleteTexture(o2);
+    gl.deleteTexture(in1);
+    gl.deleteTexture(in2);
+    gl.deleteTexture(inE);
+    b1.close();
+    b2.close();
+    bE.close();
+    stage.destroy();
+  }
+}
+
+// ---------- PNG16 编码器（M6c） ----------
+const CRC_TABLE_T = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32Of(u8: Uint8Array): number {
+  let c = 0xffffffff;
+  for (const b of u8) c = CRC_TABLE_T[(c ^ b) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+async function inflateZlib(bytes: Uint8Array): Promise<Uint8Array> {
+  const ds = new DecompressionStream('deflate');
+  const stream = new Blob([bytes]).stream().pipeThrough(ds);
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+function* pngChunks(bytes: Uint8Array): Generator<{ type: string; data: Uint8Array; crc: number }> {
+  let p = 8;
+  while (p + 8 <= bytes.length) {
+    const len = ((bytes[p] << 24) | (bytes[p + 1] << 16) | (bytes[p + 2] << 8) | bytes[p + 3]) >>> 0;
+    const type = String.fromCharCode(bytes[p + 4], bytes[p + 5], bytes[p + 6], bytes[p + 7]);
+    const data = bytes.subarray(p + 8, p + 8 + len);
+    const crc = ((bytes[p + 8 + len] << 24) | (bytes[p + 9 + len] << 16) | (bytes[p + 10 + len] << 8) | bytes[p + 11 + len]) >>> 0;
+    yield { type, data, crc };
+    p += 12 + len;
+    if (type === 'IEND') break;
+  }
+}
+async function testPng16(): Promise<void> {
+  const samples = new Uint16Array([0, 0, 0, 65535, 65535, 65535]); // 2x1：左黑右白
+  const png = encodePng16(samples, 2, 1, 3);
+  const sig = [137, 80, 78, 71, 13, 10, 26, 10];
+  ok('png16 signature', sig.every((v, i) => png[i] === v));
+  const chunks = [...pngChunks(png)];
+  ok('png16 chunk order', chunks.map((c) => c.type).join(',') === 'IHDR,IDAT,IEND');
+  const ihdr = chunks[0].data;
+  const dv = new DataView(ihdr.buffer, ihdr.byteOffset, ihdr.byteLength);
+  ok('png16 IHDR size', dv.getUint32(0) === 2 && dv.getUint32(4) === 1);
+  ok('png16 IHDR 16bit/RGB', ihdr[8] === 16 && ihdr[9] === 2);
+  let crcOk = true;
+  let p = 8;
+  for (const c of chunks) {
+    if (crc32Of(png.subarray(p + 4, p + 8 + c.data.length)) !== c.crc) crcOk = false;
+    p += 12 + c.data.length;
+  }
+  ok('png16 chunk CRC valid', crcOk);
+  const raw = await inflateZlib(chunks[1].data);
+  ok('png16 raw scanline length', raw.length === 1 + 2 * 3 * 2);
+  ok('png16 filter byte none', raw[0] === 0);
+  ok('png16 black pixel 0', raw[1] === 0 && raw[2] === 0 && raw[6] === 0);
+  ok('png16 white pixel 65535 BE', raw[7] === 0xff && raw[8] === 0xff && raw[11] === 0xff && raw[12] === 0xff);
+  // stored 块 >65535 分块往返
+  const W = 11000;
+  const big = new Uint16Array(W * 3).fill(32768);
+  const png2 = encodePng16(big, W, 1, 3);
+  const raw2 = await inflateZlib([...pngChunks(png2)][1].data);
+  ok('png16 stored multi-block roundtrip', raw2.length === 1 + W * 3 * 2);
+}
+
+// 16F 读回 + Y 翻转方向守护：源图上红下蓝，导出 PNG 必须同样上红下蓝（不颠倒）
+async function testPng16Orientation(): Promise<void> {
+  const gl = createGL();
+  if (!detectFloatRenderTarget(gl)) {
+    ok('png16 orientation (skip: no float RT)', true);
+    return;
+  }
+  const S = 4;
+  const cv = new OffscreenCanvas(S, S);
+  const c2 = cv.getContext('2d')!;
+  c2.fillStyle = 'red';
+  c2.fillRect(0, 0, S, 2);
+  c2.fillStyle = 'blue';
+  c2.fillRect(0, 2, S, 2);
+  const bmp = await createImageBitmap(cv);
+  const tex = uploadTexture(gl, bmp);
+
+  const dst = createTargetTexture(gl, S, S, 'rgba16f');
+  const fbo = gl.createFramebuffer()!;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, dst, 0);
+  gl.viewport(0, 0, S, S);
+  const blit = new BlitProgram();
+  blit.draw(gl, tex);
+
+  const buf = new Float32Array(S * S * 4);
+  gl.readPixels(0, 0, S, S, gl.RGBA, gl.FLOAT, buf);
+  const rgb16 = new Uint16Array(S * S * 3);
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const si = (y * S + x) * 4;
+      const di = (y * S + x) * 3;
+      rgb16[di] = Math.round(Math.min(1, Math.max(0, buf[si])) * 65535);
+      rgb16[di + 1] = Math.round(Math.min(1, Math.max(0, buf[si + 1])) * 65535);
+      rgb16[di + 2] = Math.round(Math.min(1, Math.max(0, buf[si + 2])) * 65535);
+    }
+  }
+  const png = encodePng16(rgb16, S, S, 3);
+  const raw = await inflateZlib([...pngChunks(png)][1].data);
+  const rowBytes = 1 + S * 3 * 2; // 25
+  const topR = (raw[1] << 8) | raw[2];
+  const topB = (raw[5] << 8) | raw[6];
+  const botOff = (S - 1) * rowBytes;
+  const botR = (raw[botOff + 1] << 8) | raw[botOff + 2];
+  const botB = (raw[botOff + 5] << 8) | raw[botOff + 6];
+  ok('png16 top stays red', topR > 55000 && topB < 10000, `R=${topR} B=${topB}`);
+  ok('png16 bottom stays blue', botB > 55000 && botR < 10000, `R=${botR} B=${botB}`);
+  blit.destroy();
+  gl.deleteFramebuffer(fbo);
+  gl.deleteTexture(dst);
+  gl.deleteTexture(tex);
+  bmp.close();
+}
+
+// ---------- 示波器纯函数（M4） ----------
+function testScopes(): void {
+  const n = 128;
+  const gray = rgbToCbCr(0.5, 0.5, 0.5);
+  ok('scope neutral gray achromatic', Math.abs(gray.cb) < 1e-6 && Math.abs(gray.cr) < 1e-6);
+  const g = new Uint8Array(4 * 4 * 4).fill(128);
+  const dg = analyzeScopes(g, 4, 4);
+  ok('scope gray lands center', dg.vec.grid[(n / 2) * n + n / 2] === 16);
+  const red = new Uint8Array(3 * 3 * 4);
+  for (let i = 0; i < 9; i++) {
+    red[i * 4] = 255;
+    red[i * 4 + 3] = 255;
+  }
+  const dr = analyzeScopes(red, 3, 3);
+  const tgt = vectorscopeTargets(n).R;
+  let bi = -1;
+  let bv = 0;
+  dr.vec.grid.forEach((v, i) => {
+    if (v > bv) {
+      bv = v;
+      bi = i;
+    }
+  });
+  const bx = bi % n;
+  const by = Math.floor(bi / n);
+  ok('scope red near R target', Math.hypot(bx - tgt.x, by - tgt.y) <= 2, `peak ${bx},${by} vs ${tgt.x.toFixed(1)},${tgt.y.toFixed(1)}`);
+  const dw = analyzeScopes(new Uint8Array([255, 255, 255, 255]), 1, 1, 1, 128);
+  ok('scope white at top row', dw.wave.r[127] === 1 && dw.wave.r[0] === 0);
+  const db = analyzeScopes(new Uint8Array([0, 0, 0, 255]), 1, 1, 1, 128);
+  ok('scope black at bottom row', db.wave.r[0] === 1);
+}
+
+// ---------- 多蒙版参数模型（M6b） ----------
+function testGradationModel(): void {
+  ok('gradation MAX = 8', MAX_GRADATIONS === 8);
+  const ids = new Set<string>();
+  for (let i = 0; i < MAX_GRADATIONS + 1; i++) ids.add(createGradation().id);
+  ok('createGradation unique ids', ids.size === MAX_GRADATIONS + 1);
+  const nz = normalizeGradation({ x1: 99, y1: -99, exposure: 50, temperature: -9, tint: 9, type: 'weird' } as never, 0);
+  ok('normalize clamp coords', nz.x1 === 1.5 && nz.y1 === -0.5);
+  ok('normalize clamp values', nz.exposure === 2 && nz.temperature === -1 && nz.tint === 1);
+  ok('normalize illegal type -> linear', nz.type === 'linear');
+  const fb = normalizeGradation(null, 2);
+  ok('normalize null fallback', fb.id === 'g3' && fb.x1 === 0.15);
+}
+
 async function main(): Promise<void> {
   const logEl = document.getElementById('log');
   const write = (t: string) => {
@@ -787,6 +1264,12 @@ async function main(): Promise<void> {
     testEnsureParams();
     testI18nParity();
     await testNewStagesNeutral();
+    await testColorEngine();
+    await testAdvancedColor();
+    await testPng16();
+    await testPng16Orientation();
+    testScopes();
+    testGradationModel();
   } catch (err) {
     failed++;
     write(`FATAL: ${err instanceof Error ? err.stack ?? err.message : String(err)}`);

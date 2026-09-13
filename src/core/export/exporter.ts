@@ -80,6 +80,17 @@ export async function runExport(
     return { jobId: -1, ok: false, error: inter.error || '中间位图渲染失败' };
   }
 
+  // 16bit PNG：Worker 已产出最终文件（浮点读回 + 手写编码）。
+  // 水印 / 缩放 / 8bit canvas 编码都会降到 8bit，这里全部旁路，仅按 PNG 容器回注 EXIF。
+  if (req.format === 'png16') {
+    let bytes16 = inter.bytes;
+    if (req.keepExif && req.meta.tiff) {
+      const tiff = rewriteTiffExif(req.meta.tiff, req.stripGps, { width: inter.width, height: inter.height });
+      if (tiff) bytes16 = injectExif('png', bytes16, tiff);
+    }
+    return { jobId: -1, ok: true, bytes: bytes16, width: inter.width, height: inter.height };
+  }
+
   let bmp = await createImageBitmap(new Blob([inter.bytes], { type: 'image/png' }));
   if (check()) {
     bmp.close();

@@ -2,7 +2,7 @@
   <div
     ref="vpRef"
     class="canvas-viewport checkerboard"
-    :class="{ grabbing: panning, picking: store.pickerActive }"
+    :class="{ grabbing: panning, picking: store.pickerActive || store.qualifierPicker }"
     @wheel.prevent="onWheel"
     @pointerdown="onViewportPointerDown"
     @dblclick="store.resetView()"
@@ -45,28 +45,41 @@
         @load="onWmPreviewLoad"
       />
 
-      <!-- 局部渐变蒙版叠加：PS 式箭头线，可拖动调整位置/方向/范围 -->
+      <!-- 局部渐变蒙版叠加（多蒙版）：PS 式箭头线，选中项可拖动位置/方向/范围 -->
       <svg
-        v-if="gradOverlay && !isCrop"
+        v-if="gradOverlays.length && !isCrop"
         class="grad-overlay"
         viewBox="0 0 100 100"
         preserveAspectRatio="none"
-        @pointerdown.stop="gradMoveStart($event)"
       >
-        <template v-if="!gradOverlay.radial">
-          <line :x1="gradOverlay.x1" :y1="gradOverlay.y1" :x2="gradOverlay.x2" :y2="gradOverlay.y2" class="grad-line" />
-          <polygon :points="gradArrow" class="grad-arrow" />
-        </template>
-        <ellipse
-          v-else
-          :cx="gradOverlay.x1"
-          :cy="gradOverlay.y1"
-          :rx="gradOverlay.r"
-          :ry="gradOverlay.r"
-          class="grad-ellipse"
-        />
-        <span class="grad-handle" :style="{ left: gradOverlay.x1 + '%', top: gradOverlay.y1 + '%' }" @pointerdown.stop="gradEndStart('p1', $event)"></span>
-        <span class="grad-handle" :style="{ left: gradOverlay.x2 + '%', top: gradOverlay.y2 + '%' }" @pointerdown.stop="gradEndStart('p2', $event)"></span>
+        <g v-for="o in gradOverlays" :key="o.id" class="grad-group" :class="{ selected: o.selected }">
+          <template v-if="!o.radial">
+            <line
+              :x1="o.x1" :y1="o.y1" :x2="o.x2" :y2="o.y2"
+              class="grad-line"
+              @pointerdown.stop="gradMoveStart(o.id, $event)"
+            />
+            <polygon v-if="o.selected" :points="arrowOf(o)" class="grad-arrow" />
+          </template>
+          <ellipse
+            v-else
+            :cx="o.x1" :cy="o.y1" :rx="o.r" :ry="o.r"
+            class="grad-ellipse"
+            @pointerdown.stop="gradMoveStart(o.id, $event)"
+          />
+          <span
+            v-if="o.selected"
+            class="grad-handle"
+            :style="{ left: o.x1 + '%', top: o.y1 + '%' }"
+            @pointerdown.stop="gradEndStart(o.id, 'p1', $event)"
+          ></span>
+          <span
+            v-if="o.selected"
+            class="grad-handle"
+            :style="{ left: o.x2 + '%', top: o.y2 + '%' }"
+            @pointerdown.stop="gradEndStart(o.id, 'p2', $event)"
+          ></span>
+        </g>
       </svg>
 
       <!-- 剪裁警告蒙版（高光红 / 阴影蓝） -->
@@ -96,6 +109,9 @@
 
     <!-- 白平衡吸管提示 -->
     <div v-if="store.pickerActive && store.hasImage" class="compare-badge glass">{{ t('canvas.pickerTip') }}</div>
+
+    <!-- 取色限定器吸管提示 -->
+    <div v-if="store.qualifierPicker && store.hasImage" class="compare-badge glass">{{ t('qualifier.pickerTip') }}</div>
 
     <!-- 空状态 -->
     <div v-if="!store.hasImage" class="empty-state">
@@ -222,23 +238,30 @@ function feedLut(): void {
   renderer?.setParams(store.params);
 }
 
-// ---------- 局部渐变蒙版叠加（PS 式箭头线） ----------
-const gradOverlay = computed(() => {
-  const g = store.params.gradation;
-  if (!g.enabled || isCrop.value) return null;
-  return {
-    x1: g.x1 * 100,
-    y1: g.y1 * 100,
-    x2: g.x2 * 100,
-    y2: g.y2 * 100,
-    radial: g.type === 'radial',
-    r: Math.hypot(g.x2 - g.x1, g.y2 - g.y1) * 100,
-  };
+// ---------- 局部渐变蒙版叠加（多蒙版，PS 式箭头线） ----------
+interface GradOverlay {
+  id: string;
+  x1: number; y1: number; x2: number; y2: number;
+  radial: boolean; r: number; selected: boolean;
+}
+const gradOverlays = computed<GradOverlay[]>(() => {
+  if (isCrop.value) return [];
+  return store.params.gradations
+    .filter((g) => g.enabled)
+    .map((g) => ({
+      id: g.id,
+      x1: g.x1 * 100,
+      y1: g.y1 * 100,
+      x2: g.x2 * 100,
+      y2: g.y2 * 100,
+      radial: g.type === 'radial',
+      r: Math.hypot(g.x2 - g.x1, g.y2 - g.y1) * 100,
+      selected: store.selectedGradId === g.id,
+    }));
 });
 
-const gradArrow = computed(() => {
-  const o = gradOverlay.value;
-  if (!o || o.radial) return '';
+function arrowOf(o: GradOverlay): string {
+  if (o.radial) return '';
   const ang = Math.atan2(o.y2 - o.y1, o.x2 - o.x1);
   const back = ang + Math.PI;
   const wing = 0.42;
@@ -246,13 +269,14 @@ const gradArrow = computed(() => {
   const p1 = `${o.x2 + Math.cos(back - wing) * len},${o.y2 + Math.sin(back - wing) * len}`;
   const p2 = `${o.x2 + Math.cos(back + wing) * len},${o.y2 + Math.sin(back + wing) * len}`;
   return `${o.x2},${o.y2} ${p1} ${p2}`;
-});
+}
 
 /**
- * 拖动状态：记录按下时的指针比例坐标与两端点原值。
+ * 拖动状态：记录被拖蒙版 id、模式、按下时指针比例坐标与两端点原值。
  * 端点拖拽 = 端点直接跟随指针（天然对称，向哪个方向都能拖到边界）。
  */
 let gradDrag: {
+  id: string;
   mode: 'move' | 'p1' | 'p2';
   fx: number;
   fy: number;
@@ -268,8 +292,9 @@ function gradClamp(v: number): number {
 
 function gradDragMove(e: PointerEvent): void {
   if (!gradDrag) return;
+  const g = store.params.gradations.find((x) => x.id === gradDrag!.id);
+  if (!g) return;
   const p = stageNorm(e);
-  const g = store.params.gradation;
   const dx = p.x - gradDrag.fx;
   const dy = p.y - gradDrag.fy;
   if (gradDrag.mode === 'move') {
@@ -292,34 +317,24 @@ function gradDragUp(): void {
   store.endScrub();
 }
 
-/** 拖动整条线：平移两端点 */
-function gradMoveStart(e: PointerEvent): void {
+/** 拖动整条线：平移两端点（同时选中该蒙版） */
+function gradMoveStart(id: string, e: PointerEvent): void {
+  const g = store.params.gradations.find((x) => x.id === id);
+  if (!g) return;
+  store.selectGradation(id);
   const p = stageNorm(e);
-  gradDrag = {
-    mode: 'move',
-    fx: p.x,
-    fy: p.y,
-    ox1: store.params.gradation.x1,
-    oy1: store.params.gradation.y1,
-    ox2: store.params.gradation.x2,
-    oy2: store.params.gradation.y2,
-  };
+  gradDrag = { id, mode: 'move', fx: p.x, fy: p.y, ox1: g.x1, oy1: g.y1, ox2: g.x2, oy2: g.y2 };
   store.mutate(() => {}, true);
   (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
 }
 
 /** 拖动端点：该端点直接跟随指针 */
-function gradEndStart(which: 'p1' | 'p2', e: PointerEvent): void {
+function gradEndStart(id: string, which: 'p1' | 'p2', e: PointerEvent): void {
+  const g = store.params.gradations.find((x) => x.id === id);
+  if (!g) return;
+  store.selectGradation(id);
   const p = stageNorm(e);
-  gradDrag = {
-    mode: which,
-    fx: p.x,
-    fy: p.y,
-    ox1: store.params.gradation.x1,
-    oy1: store.params.gradation.y1,
-    ox2: store.params.gradation.x2,
-    oy2: store.params.gradation.y2,
-  };
+  gradDrag = { id, mode: which, fx: p.x, fy: p.y, ox1: g.x1, oy1: g.y1, ox2: g.x2, oy2: g.y2 };
   store.mutate(() => {}, true);
   (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
 }
@@ -403,8 +418,8 @@ function onWheel(e: WheelEvent): void {
 
 function onViewportPointerDown(e: PointerEvent): void {
   if (e.button === 2) return;
-  // 白平衡吸管：点击取样，不触发平移
-  if (store.pickerActive) {
+  // 吸管取样（白平衡 / 取色限定器）：点击取样，不触发平移
+  if (store.pickerActive || store.qualifierPicker) {
     if (isCrop.value) {
       store.cancelPicker();
       return;
@@ -415,7 +430,10 @@ function onViewportPointerDown(e: PointerEvent): void {
       const scale = store.view.scale || 1;
       // rect 含舞台 CSS transform scale，换回布局坐标再映射纹理
       const c = renderer.pickColor((e.clientX - rect.left) / scale, (e.clientY - rect.top) / scale);
-      if (c) store.applyWhiteBalance(c.r, c.g, c.b);
+      if (c) {
+        if (store.pickerActive) store.applyWhiteBalance(c.r, c.g, c.b);
+        else store.applyQualifierHue(c.r, c.g, c.b);
+      }
     }
     return;
   }
@@ -564,7 +582,7 @@ function cancelCrop(): void {
 
 // ---------- 生命周期 / watch ----------
 function onKey(e: KeyboardEvent): void {
-  if (store.pickerActive && e.key === 'Escape') {
+  if ((store.pickerActive || store.qualifierPicker) && e.key === 'Escape') {
     store.cancelPicker();
     return;
   }

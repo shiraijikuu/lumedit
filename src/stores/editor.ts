@@ -7,6 +7,8 @@ import {
   defaultEditParams,
   ensureParams,
   pickPresetParams,
+  createGradation,
+  MAX_GRADATIONS,
   type PresetColorParams,
 } from '@/types/EditParams';
 import {
@@ -129,6 +131,10 @@ export const useEditorStore = defineStore('editor', () => {
     params.hsl = src.hsl;
     params.colorGrade = src.colorGrade;
     params.effects = src.effects;
+    params.gradation = src.gradation;
+    params.gradations = src.gradations;
+    params.qualifier = src.qualifier;
+    params.tonemap = src.tonemap;
     params.lut = src.lut;
     if (src.watermark) {
       params.watermark = {
@@ -443,7 +449,7 @@ export const useEditorStore = defineStore('editor', () => {
       p.adjust = cloneParams(defaultEditParams).adjust;
     });
   }
-  /** 重置全部调色分组（影调 / 曲线 / HSL / 颜色分级 / 效果），不动几何与 LUT */
+  /** 重置全部调色分组（影调 / 曲线 / HSL / 分级 / 局部 / 限定器 / Soft Clip / 效果），不动几何与 LUT */
   function resetColorAll(): void {
     mutate((p) => {
       const d = cloneParams(defaultEditParams);
@@ -452,7 +458,90 @@ export const useEditorStore = defineStore('editor', () => {
       p.hsl = d.hsl;
       p.colorGrade = d.colorGrade;
       p.effects = d.effects;
+      p.gradation = d.gradation;
+      p.gradations = d.gradations;
+      p.qualifier = d.qualifier;
+      p.tonemap = d.tonemap;
+      selectedGradId.value = null;
     });
+  }
+
+  // ---------- 多局部蒙版（v0.4.0） ----------
+  const selectedGradId = ref<string | null>(null);
+  function addGradation(type: 'linear' | 'radial' = 'linear'): void {
+    if (params.gradations.length >= MAX_GRADATIONS) {
+      toast('info', t('gradation.maxReached'));
+      return;
+    }
+    const item = createGradation(type);
+    mutate((p) => {
+      p.gradations.push(item);
+    });
+    selectedGradId.value = item.id;
+  }
+  function removeGradation(id: string): void {
+    mutate((p) => {
+      p.gradations = p.gradations.filter((g) => g.id !== id);
+    });
+    if (selectedGradId.value === id) selectedGradId.value = null;
+  }
+  function duplicateGradation(id: string): void {
+    if (params.gradations.length >= MAX_GRADATIONS) {
+      toast('info', t('gradation.maxReached'));
+      return;
+    }
+    const src = params.gradations.find((g) => g.id === id);
+    if (!src) return;
+    const copy = createGradation(src.type);
+    Object.assign(copy, {
+      enabled: src.enabled,
+      x1: src.x1, y1: src.y1, x2: src.x2, y2: src.y2,
+      exposure: src.exposure, temperature: src.temperature, tint: src.tint,
+    });
+    mutate((p) => {
+      const idx = p.gradations.findIndex((g) => g.id === id);
+      p.gradations.splice(idx + 1, 0, copy);
+    });
+    selectedGradId.value = copy.id;
+  }
+  function selectGradation(id: string | null): void {
+    selectedGradId.value = id;
+  }
+  /** 修改指定蒙版（滑块拖动走 scrub） */
+  function mutateGrad(id: string, fn: (g: EditParams['gradations'][number]) => void, scrub = false): void {
+    mutate((p) => {
+      const g = p.gradations.find((x) => x.id === id);
+      if (g) fn(g);
+    }, scrub);
+  }
+
+  // ---------- HSL 取色限定器吸管（v0.4.0） ----------
+  const qualifierPicker = ref(false);
+  function toggleQualifierPicker(): void {
+    if (!hasImage.value) return;
+    qualifierPicker.value = !qualifierPicker.value;
+    if (qualifierPicker.value) pickerActive.value = false; // 与白平衡吸管互斥
+  }
+  function rgbToHue(r8: number, g8: number, b8: number): number {
+    const r = r8 / 255, g = g8 / 255, b = b8 / 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    if (d === 0) return 0;
+    let h: number;
+    if (mx === r) h = ((g - b) / d) % 6;
+    else if (mx === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+    return h;
+  }
+  /** 取色限定器吸管落点：以像素色相为中心并启用 */
+  function applyQualifierHue(r: number, g: number, b: number): void {
+    const hue = rgbToHue(r, g, b);
+    mutate((p) => {
+      p.qualifier.enabled = true;
+      p.qualifier.centerHue = Math.round(hue);
+    });
+    qualifierPicker.value = false;
   }
 
   // ---------- 水印（整体复用 camera-watermark 引擎） ----------
@@ -644,6 +733,10 @@ export const useEditorStore = defineStore('editor', () => {
         params.hsl = p.hsl;
         params.colorGrade = p.colorGrade;
         params.effects = p.effects;
+        params.gradation = p.gradation;
+        params.gradations = p.gradations;
+        params.qualifier = p.qualifier;
+        params.tonemap = p.tonemap;
         params.lut = p.lut;
         await syncLutFromParams();
         scheduleWmPreview();
@@ -668,9 +761,11 @@ export const useEditorStore = defineStore('editor', () => {
   function togglePicker(): void {
     if (!hasImage.value) return;
     pickerActive.value = !pickerActive.value;
+    if (pickerActive.value) qualifierPicker.value = false; // 与取色限定器吸管互斥
   }
   function cancelPicker(): void {
     pickerActive.value = false;
+    qualifierPicker.value = false;
   }
   /** 吸管取样输出像素（0-255）。按 AdjustStage 白平衡公式反解温/色调增量并叠加到当前值 */
   function applyWhiteBalance(r: number, g: number, b: number): void {
@@ -729,7 +824,7 @@ export const useEditorStore = defineStore('editor', () => {
     }
     exporting.value = true;
     try {
-      const ext = exportOptions.format === 'jpeg' ? 'jpg' : exportOptions.format;
+      const ext = exportOptions.format === 'jpeg' ? 'jpg' : exportOptions.format === 'png16' ? 'png' : exportOptions.format;
       const base = imageName.value.replace(/\.[^.]+$/, '');
       const resp = await runExport({
         buffer: sourceBuffer.value.slice(0),
@@ -953,6 +1048,10 @@ export const useEditorStore = defineStore('editor', () => {
     params.hsl = d.hsl;
     params.colorGrade = d.colorGrade;
     params.effects = d.effects;
+    params.gradation = d.gradation;
+    params.gradations = d.gradations;
+    params.qualifier = d.qualifier;
+    params.tonemap = d.tonemap;
     params.lut = d.lut;
     wmSeq++;
     delete params.watermark;
@@ -1035,8 +1134,11 @@ export const useEditorStore = defineStore('editor', () => {
     sessionImages, openSessionImage, removeSessionImage, restoreSession, openRecent, saveSessionNow,
     // geometry
     rotate90, toggleFlipH, toggleFlipV, setCrop, resetCrop, resetGeometryAll, resetAdjust, resetColorAll,
+    // 多局部蒙版
+    selectedGradId, addGradation, removeGradation, duplicateGradation, selectGradation, mutateGrad,
     // picker / split / clip / mode / zoom / export / project
     pickerActive, togglePicker, cancelPicker, applyWhiteBalance,
+    qualifierPicker, toggleQualifierPicker, applyQualifierHue,
     splitCompare, splitX, clipWarn, toggleSplitCompare, setSplitX, toggleClipWarn,
     mode, cropAspect, cropGuide, cycleCropGuide, setMode, setCropAspect, zoomBy,
     exportCurrent, saveProjectFile, openProjectFile,

@@ -1,6 +1,11 @@
 <template>
   <div class="color-panel">
     <CollapseSection :default-open="false">
+      <template #title>{{ t('scope.title') }}</template>
+      <Scopes />
+    </CollapseSection>
+
+    <CollapseSection :default-open="false">
       <template #title>{{ t('preset.title') }}</template>
       <template #actions>
         <button type="button" class="ghost mini" :disabled="saveName.trim() === '' || !store.hasImage" @click="savePreset">
@@ -65,6 +70,16 @@
       </CollapseSection>
 
       <CollapseSection :default-open="false">
+        <template #title>
+          {{ t('qualifier.title') }}<span class="pro-badge">{{ t('adjust.proBadge') }}</span>
+        </template>
+        <template #actions>
+          <button type="button" class="ghost mini" @click="resetQualifier">{{ t('common.reset') }}</button>
+        </template>
+        <QualifierSection />
+      </CollapseSection>
+
+      <CollapseSection :default-open="false">
         <template #title>{{ t('gradation.title') }}<span class="pro-badge">{{ t('adjust.proBadge') }}</span></template>
         <template #actions>
           <button type="button" class="ghost mini" @click="resetGradation">{{ t('common.reset') }}</button>
@@ -82,6 +97,16 @@
         <EffectsSection />
       </CollapseSection>
 
+      <CollapseSection :default-open="false">
+        <template #title>
+          {{ t('tonemap.title') }}<span class="pro-badge">{{ t('adjust.proBadge') }}</span>
+        </template>
+        <template #actions>
+          <button type="button" class="ghost mini" @click="resetTonemap">{{ t('common.reset') }}</button>
+        </template>
+        <ToneRollSection />
+      </CollapseSection>
+
     <div class="panel-foot">
       <button type="button" class="ghost" @click="resetAll">{{ t('common.resetAll') }}</button>
     </div>
@@ -96,12 +121,15 @@ import { useEditorStore } from '@/stores/editor';
 import { usePresetStore } from '@/stores/presets';
 import { t } from '@/i18n';
 import CollapseSection from '../ui/CollapseSection.vue';
+import Scopes from '../ui/Scopes.vue';
 import ToneSection from './color/ToneSection.vue';
 import CurveSection from './color/CurveSection.vue';
 import HslSection from './color/HslSection.vue';
 import GradeSection from './color/GradeSection.vue';
+import QualifierSection from './color/QualifierSection.vue';
 import EffectsSection from './color/EffectsSection.vue';
 import GradationSection from './color/GradationSection.vue';
+import ToneRollSection from './color/ToneRollSection.vue';
 
 const store = useEditorStore();
 const presetStore = usePresetStore();
@@ -152,6 +180,18 @@ const GRADATION_DEFAULT = {
 function resetGradation(): void {
   store.mutate((p) => {
     p.gradation = { ...GRADATION_DEFAULT };
+    p.gradations = [];
+  });
+  store.selectGradation(null);
+}
+function resetQualifier(): void {
+  store.mutate((p) => {
+    p.qualifier = JSON.parse(JSON.stringify(defaultEditParams.qualifier));
+  });
+}
+function resetTonemap(): void {
+  store.mutate((p) => {
+    p.tonemap = { ...defaultEditParams.tonemap };
   });
 }
 

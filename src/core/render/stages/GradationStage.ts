@@ -1,5 +1,5 @@
 import type { RenderStage, RenderContext } from '../RenderStage';
-import type { EditParams } from '@/types/EditParams';
+import type { EditParams, GradationParams } from '@/types/EditParams';
 import {
   attachTextureToFBO,
   createFullscreenQuad,
@@ -8,6 +8,7 @@ import {
   type ProgramBundle,
 } from '../gpuUtils';
 import { acquireTarget, releaseTarget } from '../texturePool';
+import { SRGB_TRANSFER_GLSL } from '../chunks/colorSpace.glsl';
 
 const VERT = /* glsl */ `#version 300 es
 in vec2 aPos;
@@ -17,7 +18,7 @@ void main() {
   gl_Position = vec4(aPos, 0.0, 1.0);
 }`;
 
-// 局部渐变：矩形（线性）或椭圆（径向）蒙版内应用 曝光/色温/色调（公式与 AdjustStage 一致）。
+// 局部渐变：矩形（线性）或椭圆（径向）蒙版内应用 曝光/色温/色调（公式与 AdjustStage 一致，线性光域）。
 // q 为蒙版局部坐标（0~1，rect 内部），线性沿 q.x 形成 0→1 渐变并受 q.y 边缘衰减约束。
 const FRAG = /* glsl */ `#version 300 es
 precision highp float;
@@ -30,6 +31,7 @@ uniform float uType;    // 0 = linear, 1 = radial
 uniform float uExposure;
 uniform float uTemperature;
 uniform float uTint;
+${SRGB_TRANSFER_GLSL}
 
 void main() {
   vec4 src = texture(uSource, vTexCoord);
@@ -45,16 +47,22 @@ void main() {
     // 径向：圆心全量，到边缘点距离处衰减到 0
     mask = 1.0 - smoothstep(0.55, 1.0, length(vTexCoord - uP1) / sqrt(len2));
   }
-  vec3 a = c * exp2(uExposure);
-  a.r += uTemperature * 0.06 * (1.0 - a.r * 0.5);
-  a.b -= uTemperature * 0.06 * (1.0 - a.b * 0.5);
-  a.r += uTint * 0.05;
-  a.b += uTint * 0.05;
-  a.g -= uTint * 0.05;
+  // 曝光/白平衡与 AdjustStage 一致：在线性光域做光量运算后转回 sRGB
+  vec3 al = srgbToLinear(c) * exp2(uExposure);
+  al.r *= 1.0 + uTemperature * 0.12;
+  al.b *= 1.0 - uTemperature * 0.12;
+  al.r *= 1.0 + uTint * 0.10;
+  al.b *= 1.0 + uTint * 0.10;
+  al.g *= 1.0 - uTint * 0.10;
+  vec3 a = linearToSrgb(max(al, 0.0));
   outColor = vec4(mix(c, clamp(a, 0.0, 1.0), clamp(mask, 0.0, 1.0)), src.a);
 }`;
 
-/** 局部渐变 Stage：蒙版内应用曝光/色温/色调；未启用或全零参数直通 */
+/**
+ * 局部渐变 Stage：支持多个线性/径向蒙版叠加（v0.4.0，上限 MAX_GRADATIONS）。
+ * 每个有效蒙版一次 pass，上一张中间纹理在被消费后立即归还纹理池；
+ * 兼容旧版单个 params.gradation 字段（无 gradations 数组时回退）。无有效蒙版直通。
+ */
 export class GradationStage implements RenderStage {
   public readonly name = 'gradation';
   private gl: WebGL2RenderingContext | null = null;
@@ -83,40 +91,61 @@ export class GradationStage implements RenderStage {
     };
   }
 
+  /** 收集当前生效的蒙版列表（新数组优先，回退旧单字段） */
+  private activeMasks(params: EditParams): GradationParams[] {
+    const source: GradationParams[] =
+      Array.isArray(params.gradations) && params.gradations.length
+        ? params.gradations
+        : params.gradation?.enabled
+          ? [params.gradation]
+          : [];
+    return source.filter(
+      (g) => g.enabled && (g.exposure !== 0 || g.temperature !== 0 || g.tint !== 0)
+    );
+  }
+
   execute(input: WebGLTexture, params: EditParams, ctx: RenderContext): WebGLTexture {
-    const g = params.gradation;
-    if (!g.enabled || (g.exposure === 0 && g.temperature === 0 && g.tint === 0)) return input;
+    const masks = this.activeMasks(params);
+    if (masks.length === 0) return input;
     const gl = ctx.gl;
     this.ensure(gl);
 
-    // 参数 y 以顶部为原点 → 纹理 UV 左下原点
-    const dst = acquireTarget(ctx, ctx.width, ctx.height);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, dst, 0);
-    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      releaseTarget(ctx, dst, ctx.width, ctx.height);
-      throw new Error('[GradationStage] FBO incomplete');
-    }
-    gl.viewport(0, 0, ctx.width, ctx.height);
+    let tex = input;
     gl.useProgram(this.bundle!.program);
     gl.bindVertexArray(this.vao);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, input);
-    gl.uniform1i(this.loc.uSource, 0);
-    gl.uniform2f(this.loc.uP1, g.x1, 1 - g.y1);
-    gl.uniform2f(this.loc.uP2, g.x2, 1 - g.y2);
-    gl.uniform1f(this.loc.uType, g.type === 'radial' ? 1 : 0);
-    gl.uniform1f(this.loc.uExposure, g.exposure);
-    gl.uniform1f(this.loc.uTemperature, g.temperature);
-    gl.uniform1f(this.loc.uTint, g.tint);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    for (const g of masks) {
+      const dst = acquireTarget(ctx, ctx.width, ctx.height);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, dst, 0);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        releaseTarget(ctx, dst, ctx.width, ctx.height);
+        throw new Error('[GradationStage] FBO incomplete');
+      }
+      gl.viewport(0, 0, ctx.width, ctx.height);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.uniform1i(this.loc.uSource, 0);
+      // 参数 y 以顶部为原点 → 纹理 UV 左下原点
+      gl.uniform2f(this.loc.uP1, g.x1, 1 - g.y1);
+      gl.uniform2f(this.loc.uP2, g.x2, 1 - g.y2);
+      gl.uniform1f(this.loc.uType, g.type === 'radial' ? 1 : 0);
+      gl.uniform1f(this.loc.uExposure, g.exposure);
+      gl.uniform1f(this.loc.uTemperature, g.temperature);
+      gl.uniform1f(this.loc.uTint, g.tint);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      // 上一张中间纹理已被消费，立即归还池复用（input 永不归还）
+      if (tex !== input) releaseTarget(ctx, tex, ctx.width, ctx.height);
+      tex = dst;
+    }
 
     gl.bindVertexArray(null);
     gl.bindTexture(gl.TEXTURE_2D, null);
     gl.useProgram(null);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    return dst;
+    return tex;
   }
 
   destroy(): void {
