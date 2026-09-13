@@ -165,17 +165,7 @@ function resetGrade(): void {
     p.colorGrade = JSON.parse(JSON.stringify(defaultEditParams.colorGrade));
   });
 }
-const GRADATION_DEFAULT = {
-  enabled: false,
-  type: 'linear' as const,
-  x1: 0.15,
-  y1: 0.5,
-  x2: 0.85,
-  y2: 0.5,
-  exposure: 0,
-  temperature: 0,
-  tint: 0,
-};
+const GRADATION_DEFAULT = JSON.parse(JSON.stringify(defaultEditParams.gradation));
 
 function resetGradation(): void {
   store.mutate((p) => {

@@ -9,6 +9,7 @@ import {
   pickPresetParams,
   createGradation,
   MAX_GRADATIONS,
+  type GradationType,
   type PresetColorParams,
 } from '@/types/EditParams';
 import {
@@ -468,7 +469,7 @@ export const useEditorStore = defineStore('editor', () => {
 
   // ---------- 多局部蒙版（v0.4.0） ----------
   const selectedGradId = ref<string | null>(null);
-  function addGradation(type: 'linear' | 'radial' = 'linear'): void {
+  function addGradation(type: GradationType = 'linear'): void {
     if (params.gradations.length >= MAX_GRADATIONS) {
       toast('info', t('gradation.maxReached'));
       return;
@@ -754,6 +755,38 @@ export const useEditorStore = defineStore('editor', () => {
     } catch (err) {
       toast('error', t('msg.exportFail', { v: err instanceof Error ? err.message : String(err) }));
     }
+  }
+
+  // ---------- 画笔蒙版绘制 ----------
+  const paintBrushId = ref<string | null>(null);
+  const brushRadius = ref(0.08);
+  const brushHardness = ref(0.7);
+
+  function setPaintBrush(id: string | null): void {
+    paintBrushId.value = paintBrushId.value === id ? null : id;
+  }
+
+  /** 笔画开始：推入新笔画（走撤销栈，一次笔画一个快照） */
+  function brushBeginStroke(id: string, x: number, y: number): void {
+    mutate((p) => {
+      const g = p.gradations.find((x2) => x2.id === id);
+      if (!g) return;
+      g.strokes.push({ pts: [[x, y]], radius: brushRadius.value, hardness: brushHardness.value });
+    }, true);
+  }
+
+  /** 笔画续点：距离抽稀后追加（scrub 模式，不压栈） */
+  function brushAddPoint(id: string, x: number, y: number): void {
+    const g = params.gradations.find((x2) => x2.id === id);
+    if (!g || !g.strokes.length) return;
+    const st = g.strokes[g.strokes.length - 1];
+    const [lx, ly] = st.pts[st.pts.length - 1];
+    if (Math.hypot(x - lx, y - ly) < 0.006) return;
+    st.pts.push([x, y]);
+  }
+
+  function brushEndStroke(): void {
+    endScrub();
   }
 
   // ---------- 白平衡吸管 ----------
@@ -1129,8 +1162,9 @@ export const useEditorStore = defineStore('editor', () => {
     setShowOriginal, resetView,
     // lut
     selectBuiltin, loadExternalCube, setLutStrength, removeLut, syncLutFromParams,
-    // presets / clipboard / copy-paste / lut-export / session
+    // presets / clipboard / copy-paste / lut-export / session / brush
     applyPreset, copyToClipboard, copyEdits, pasteEdits, exportLutCube,
+    paintBrushId, brushRadius, brushHardness, setPaintBrush, brushBeginStroke, brushAddPoint, brushEndStroke,
     sessionImages, openSessionImage, removeSessionImage, restoreSession, openRecent, saveSessionNow,
     // geometry
     rotate90, toggleFlipH, toggleFlipV, setCrop, resetCrop, resetGeometryAll, resetAdjust, resetColorAll,

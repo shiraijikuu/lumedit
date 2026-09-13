@@ -121,22 +121,47 @@ export interface WatermarkParams {
   cwmMeta: Record<string, unknown> | null;
 }
 
+export type GradationType = 'linear' | 'radial' | 'brush' | 'luminance' | 'color';
+
 export interface GradationParams {
   enabled: boolean;
-  /** linear=线性渐变（沿线段 0→1，垂直方向无限延伸），radial=径向（圆心→边缘） */
-  type: 'linear' | 'radial';
+  /** linear=线性渐变（沿线段 0→1，垂直方向无限延伸），radial=径向（圆心→边缘），
+   *  brush=画笔（笔画累积），luminance=亮度区间，color=色相范围 */
+  type: GradationType;
+  /** 与之前累积蒙版的组合方式（首个有效蒙版忽略）：并集/交集/差集 */
+  combine: MaskCombine;
   /** 线段/圆心端点（归一化，y 以画面顶部为原点）：linear 为渐变起点（无效果侧），radial 为圆心 */
   x1: number;
   y1: number;
   /** linear 为渐变终点（全效果侧，箭头端），radial 为蒙版边缘上的点 */
   x2: number;
   y2: number;
+  /** 亮度蒙版：画面亮度 [lo, hi] 区间入选，soft 为过渡带宽 */
+  lumaLo: number;
+  lumaHi: number;
+  lumaSoft: number;
+  /** 颜色范围蒙版：中心色相 0~360、半宽（度）、柔化（度）——同取色限定 */
+  hueCenter: number;
+  hueRange: number;
+  hueFeather: number;
+  /** 画笔蒙版：笔画列表（归一化坐标，radius 按画面高度比例） */
+  strokes: MaskStroke[];
   /** 渐变内曝光（EV） */
   exposure: number;
   /** 渐变内色温 */
   temperature: number;
   /** 渐变内色调 */
   tint: number;
+}
+
+/** 蒙版组合方式：并集（加蒙版）/ 交集（限定在已有蒙版内）/ 差集（从已有蒙版挖除） */
+export type MaskCombine = 'union' | 'intersect' | 'subtract';
+
+/** 蒙版笔画（画笔蒙版）：归一化坐标点列（y 顶部原点），radius 按画面高度比例 */
+export interface MaskStroke {
+  pts: Array<[number, number]>;
+  radius: number;
+  hardness: number;
 }
 
 /** 多局部蒙版列表项：在单渐变参数上附加稳定 id（供 UI 列表 key 与选中） */
@@ -252,6 +277,14 @@ export const defaultEditParams: EditParams = {
   gradation: {
     enabled: false,
     type: 'linear',
+    combine: 'union',
+    lumaLo: 0.25,
+    lumaHi: 0.75,
+    lumaSoft: 0.15,
+    hueCenter: 0,
+    hueRange: 30,
+    hueFeather: 15,
+    strokes: [],
     x1: 0.15,
     y1: 0.5,
     x2: 0.85,
@@ -287,12 +320,20 @@ export const MAX_GRADATIONS = 8;
 
 let gradSeq = 0;
 /** 新建一个默认蒙版（线性，水平贯穿，中性参数），id 进程内唯一 */
-export function createGradation(type: 'linear' | 'radial' = 'linear'): GradationItem {
+export function createGradation(type: 'linear' | 'radial' | 'brush' | 'luminance' | 'color' = 'linear'): GradationItem {
   gradSeq += 1;
   return {
     id: `g_${Date.now().toString(36)}_${gradSeq}`,
     enabled: true,
     type,
+    combine: 'union',
+    lumaLo: 0.25,
+    lumaHi: 0.75,
+    lumaSoft: 0.15,
+    hueCenter: 0,
+    hueRange: 30,
+    hueFeather: 15,
+    strokes: [],
     x1: 0.15,
     y1: 0.5,
     x2: 0.85,
@@ -313,7 +354,15 @@ export function normalizeGradation(g: Partial<GradationItem> | null | undefined,
   return {
     id: (g && typeof g.id === 'string' && g.id) || `g${idx + 1}`,
     enabled: !!g?.enabled,
-    type: g?.type === 'radial' ? 'radial' : 'linear',
+    type: g?.type === 'radial' ? 'radial' : g?.type === 'brush' ? 'brush' : g?.type === 'luminance' ? 'luminance' : g?.type === 'color' ? 'color' : 'linear',
+    combine: g?.combine === 'intersect' || g?.combine === 'subtract' ? g.combine : 'union',
+    lumaLo: clampNum(g?.lumaLo, 0, 1, 0.25),
+    lumaHi: clampNum(g?.lumaHi, 0, 1, 0.75),
+    lumaSoft: clampNum(g?.lumaSoft, 0, 0.5, 0.15),
+    hueCenter: clampNum(g?.hueCenter, 0, 360, 0),
+    hueRange: clampNum(g?.hueRange, 0, 180, 30),
+    hueFeather: clampNum(g?.hueFeather, 0, 90, 15),
+    strokes: Array.isArray(g?.strokes) ? g.strokes : [],
     x1: clampNum(g?.x1, -0.5, 1.5, 0.15),
     y1: clampNum(g?.y1, -0.5, 1.5, 0.5),
     x2: clampNum(g?.x2, -0.5, 1.5, 0.85),
@@ -371,7 +420,7 @@ export function ensureParams(p: Partial<EditParams> | null | undefined): EditPar
       out.gradation.y2 = Math.min(1.5, Math.max(-0.5, gp.y2 ?? out.gradation.y2));
     }
     out.gradation.enabled = !!gp.enabled;
-    out.gradation.type = gp.type === 'radial' ? 'radial' : 'linear';
+    out.gradation.type = gp.type === 'radial' ? 'radial' : gp.type === 'brush' ? 'brush' : gp.type === 'luminance' ? 'luminance' : gp.type === 'color' ? 'color' : 'linear';
     out.gradation.exposure = gp.exposure ?? 0;
     out.gradation.temperature = gp.temperature ?? 0;
     out.gradation.tint = gp.tint ?? 0;

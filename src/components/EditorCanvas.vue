@@ -2,7 +2,7 @@
   <div
     ref="vpRef"
     class="canvas-viewport checkerboard"
-    :class="{ grabbing: panning, picking: store.pickerActive || store.qualifierPicker }"
+    :class="{ grabbing: panning, picking: store.pickerActive || store.qualifierPicker || !!store.paintBrushId }"
     @wheel.prevent="onWheel"
     @pointerdown="onViewportPointerDown"
     @dblclick="store.resetView()"

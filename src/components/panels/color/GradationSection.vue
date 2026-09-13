@@ -7,6 +7,12 @@
       <button type="button" class="ghost mini" :disabled="list.length >= MAX" @click="store.addGradation('radial')">
         ＋ {{ t('gradation.addRadial') }}
       </button>
+      <button type="button" class="ghost mini" :disabled="list.length >= MAX" @click="store.addGradation('luminance')">
+        ＋ {{ t('gradation.addLuma') }}
+      </button>
+      <button type="button" class="ghost mini" :disabled="list.length >= MAX" @click="store.addGradation('color')">
+        ＋ {{ t('gradation.addColor') }}
+      </button>
       <span class="mask-count">{{ list.length }}/{{ MAX }}</span>
     </div>
 
@@ -19,7 +25,7 @@
         :class="{ active: current?.id === g.id }"
       >
         <button type="button" class="mask-name" @click="store.selectGradation(g.id)">
-          {{ i + 1 }}. {{ g.type === 'linear' ? t('gradation.linear') : t('gradation.radial') }}
+          {{ i + 1 }}. {{ t('gradation.' + g.type) }}
           <span v-if="!g.enabled" class="mask-off">{{ t('gradation.off') }}</span>
         </button>
         <button type="button" class="mask-op" :title="t('gradation.duplicate')" @click="store.duplicateGradation(g.id)">⧉</button>
@@ -44,15 +50,60 @@
           <button :class="{ active: current.type === 'radial' }" @click="set((g) => (g.type = 'radial'))">
             {{ t('gradation.radial') }}
           </button>
+          <button :class="{ active: current.type === 'luminance' }" @click="set((g) => (g.type = 'luminance'))">
+            {{ t('gradation.luminance') }}
+          </button>
+          <button :class="{ active: current.type === 'color' }" @click="set((g) => (g.type = 'color'))">
+            {{ t('gradation.color') }}
+          </button>
         </div>
+        <p class="group-label">{{ t('gradation.combine') }}</p>
+        <div class="segmented">
+          <button
+            v-for="op in ([0, 1, 2] as const)"
+            :key="op"
+            :class="{ active: current.combine === (op === 0 ? 'union' : op === 1 ? 'intersect' : 'subtract') }"
+            :disabled="firstEnabledId === current.id"
+            @click="set((g) => (g.combine = op === 0 ? 'union' : op === 1 ? 'intersect' : 'subtract'))"
+          >
+            {{ t(op === 0 ? 'gradation.combineUnion' : op === 1 ? 'gradation.combineIntersect' : 'gradation.combineSubtract') }}
+          </button>
+        </div>
+        <p v-if="firstEnabledId === current.id" class="hint">{{ t('gradation.firstHint') }}</p>
         <SliderRow :label="t('adjust.exposure')" :model-value="current.exposure" :min="-2" :max="2" :step="0.01" :decimals="2" @update:model-value="set((g) => (g.exposure = $event))" @scrub-start="store.mutate(() => {}, true)" @scrub-end="store.endScrub()" @reset="set((g) => (g.exposure = 0))" />
         <SliderRow :label="t('adjust.temperature')" :model-value="current.temperature" :min="-1" :max="1" :step="0.01" :decimals="2" @update:model-value="set((g) => (g.temperature = $event))" @scrub-start="store.mutate(() => {}, true)" @scrub-end="store.endScrub()" @reset="set((g) => (g.temperature = 0))" />
         <SliderRow :label="t('adjust.tint')" :model-value="current.tint" :min="-1" :max="1" :step="0.01" :decimals="2" @update:model-value="set((g) => (g.tint = $event))" @scrub-start="store.mutate(() => {}, true)" @scrub-end="store.endScrub()" @reset="set((g) => (g.tint = 0))" />
-        <p class="group-label">{{ t('gradation.region') }}</p>
-        <SliderRow :label="t('gradation.p1x')" :model-value="current.x1" :min="-0.5" :max="1.5" :step="0.01" :decimals="2" @update:model-value="set((g) => (g.x1 = $event))" @scrub-start="store.mutate(() => {}, true)" @scrub-end="store.endScrub()" @reset="set((g) => (g.x1 = 0.15))" />
-        <SliderRow :label="t('gradation.p1y')" :model-value="current.y1" :min="-0.5" :max="1.5" :step="0.01" :decimals="2" @update:model-value="set((g) => (g.y1 = $event))" @scrub-start="store.mutate(() => {}, true)" @scrub-end="store.endScrub()" @reset="set((g) => (g.y1 = 0.5))" />
-        <SliderRow :label="t('gradation.p2x')" :model-value="current.x2" :min="-0.5" :max="1.5" :step="0.01" :decimals="2" @update:model-value="set((g) => (g.x2 = $event))" @scrub-start="store.mutate(() => {}, true)" @scrub-end="store.endScrub()" @reset="set((g) => (g.x2 = 0.85))" />
-        <SliderRow :label="t('gradation.p2y')" :model-value="current.y2" :min="-0.5" :max="1.5" :step="0.01" :decimals="2" @update:model-value="set((g) => (g.y2 = $event))" @scrub-start="store.mutate(() => {}, true)" @scrub-end="store.endScrub()" @reset="set((g) => (g.y2 = 0.5))" />
+        <template v-if="current.type === 'linear' || current.type === 'radial'">
+          <p class="group-label">{{ t('gradation.region') }}</p>
+          <SliderRow :label="t('gradation.p1x')" :model-value="current.x1" :min="-0.5" :max="1.5" :step="0.01" :decimals="2" @update:model-value="set((g) => (g.x1 = $event))" @scrub-start="store.mutate(() => {}, true)" @scrub-end="store.endScrub()" @reset="set((g) => (g.x1 = 0.15))" />
+          <SliderRow :label="t('gradation.p1y')" :model-value="current.y1" :min="-0.5" :max="1.5" :step="0.01" :decimals="2" @update:model-value="set((g) => (g.y1 = $event))" @scrub-start="store.mutate(() => {}, true)" @scrub-end="store.endScrub()" @reset="set((g) => (g.y1 = 0.5))" />
+          <SliderRow :label="t('gradation.p2x')" :model-value="current.x2" :min="-0.5" :max="1.5" :step="0.01" :decimals="2" @update:model-value="set((g) => (g.x2 = $event))" @scrub-start="store.mutate(() => {}, true)" @scrub-end="store.endScrub()" @reset="set((g) => (g.x2 = 0.85))" />
+          <SliderRow :label="t('gradation.p2y')" :model-value="current.y2" :min="-0.5" :max="1.5" :step="0.01" :decimals="2" @update:model-value="set((g) => (g.y2 = $event))" @scrub-start="store.mutate(() => {}, true)" @scrub-end="store.endScrub()" @reset="set((g) => (g.y2 = 0.5))" />
+        </template>
+        <template v-else-if="current.type === 'luminance'">
+          <p class="group-label">{{ t('gradation.lumaBand') }}</p>
+          <SliderRow :label="t('gradation.lumaLo')" :model-value="current.lumaLo" :min="0" :max="1" :step="0.01" :decimals="2" @update:model-value="set((g) => (g.lumaLo = $event))" @scrub-start="store.mutate(() => {}, true)" @scrub-end="store.endScrub()" @reset="set((g) => (g.lumaLo = 0.25))" />
+          <SliderRow :label="t('gradation.lumaHi')" :model-value="current.lumaHi" :min="0" :max="1" :step="0.01" :decimals="2" @update:model-value="set((g) => (g.lumaHi = $event))" @scrub-start="store.mutate(() => {}, true)" @scrub-end="store.endScrub()" @reset="set((g) => (g.lumaHi = 0.75))" />
+          <SliderRow :label="t('gradation.lumaSoft')" :model-value="current.lumaSoft" :min="0" :max="0.5" :step="0.01" :decimals="2" @update:model-value="set((g) => (g.lumaSoft = $event))" @scrub-start="store.mutate(() => {}, true)" @scrub-end="store.endScrub()" @reset="set((g) => (g.lumaSoft = 0.15))" />
+        </template>
+        <template v-else-if="current.type === 'color'">
+          <p class="group-label">{{ t('gradation.hueBand') }}</p>
+          <SliderRow :label="t('qualifier.centerHue')" :model-value="current.hueCenter" :min="0" :max="360" :step="1" :decimals="0" @update:model-value="set((g) => (g.hueCenter = $event))" @scrub-start="store.mutate(() => {}, true)" @scrub-end="store.endScrub()" @reset="set((g) => (g.hueCenter = 0))" />
+          <SliderRow :label="t('qualifier.hueRange')" :model-value="current.hueRange" :min="0" :max="180" :step="1" :decimals="0" @update:model-value="set((g) => (g.hueRange = $event))" @scrub-start="store.mutate(() => {}, true)" @scrub-end="store.endScrub()" @reset="set((g) => (g.hueRange = 30))" />
+          <SliderRow :label="t('qualifier.hueFeather')" :model-value="current.hueFeather" :min="0" :max="90" :step="1" :decimals="0" @update:model-value="set((g) => (g.hueFeather = $event))" @scrub-start="store.mutate(() => {}, true)" @scrub-end="store.endScrub()" @reset="set((g) => (g.hueFeather = 15))" />
+        </template>
+        <template v-else-if="current.type === 'brush'">
+          <div class="opt-row">
+            <span>{{ t('gradation.painting') }}</span>
+            <ToggleSwitch
+              :model-value="store.paintBrushId === current.id"
+              @update:model-value="store.setPaintBrush($event ? current.id : null)"
+            />
+          </div>
+          <SliderRow :label="t('gradation.brushSize')" :model-value="store.brushRadius" :min="0.02" :max="0.3" :step="0.005" :decimals="3" @update:model-value="store.brushRadius = $event" @scrub-start="store.mutate(() => {}, true)" @scrub-end="store.endScrub()" @reset="store.brushRadius = 0.08" />
+          <SliderRow :label="t('gradation.brushHard')" :model-value="store.brushHardness" :min="0" :max="1" :step="0.05" :decimals="2" @update:model-value="store.brushHardness = $event" @scrub-start="store.mutate(() => {}, true)" @scrub-end="store.endScrub()" @reset="store.brushHardness = 0.7" />
+          <p class="hint">{{ t('gradation.brushHint') }}</p>
+        </template>
         <p class="hint">{{ t('gradation.hint') }}</p>
       </template>
     </template>
@@ -81,9 +132,20 @@ const current = computed<GradationItem | null>(() => {
 function set(fn: (g: GradationItem) => void): void {
   if (current.value) store.mutateGrad(current.value.id, fn);
 }
+
+/** 第一个启用中的蒙版（其组合方式由渲染端忽略） */
+const firstEnabledId = computed(() => list.value.find((g) => g.enabled)?.id ?? null);
 </script>
 
 <style scoped>
+.opt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 12px;
+  color: var(--txt-1);
+}
 .group-label {
   margin: 10px 0 2px;
   font-size: 11px;
