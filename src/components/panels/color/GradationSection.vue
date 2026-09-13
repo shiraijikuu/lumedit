@@ -7,6 +7,9 @@
       <button type="button" class="ghost mini" :disabled="list.length >= MAX" @click="store.addGradation('radial')">
         ＋ {{ t('gradation.addRadial') }}
       </button>
+      <button type="button" class="ghost mini" :disabled="list.length >= MAX" @click="store.addGradation('brush')">
+        ＋ {{ t('gradation.addBrush') }}
+      </button>
       <button type="button" class="ghost mini" :disabled="list.length >= MAX" @click="store.addGradation('luminance')">
         ＋ {{ t('gradation.addLuma') }}
       </button>
@@ -49,6 +52,9 @@
           </button>
           <button :class="{ active: current.type === 'radial' }" @click="set((g) => (g.type = 'radial'))">
             {{ t('gradation.radial') }}
+          </button>
+          <button :class="{ active: current.type === 'brush' }" @click="set((g) => (g.type = 'brush'))">
+            {{ t('gradation.brush') }}
           </button>
           <button :class="{ active: current.type === 'luminance' }" @click="set((g) => (g.type = 'luminance'))">
             {{ t('gradation.luminance') }}
@@ -142,9 +148,14 @@ const firstEnabledId = computed(() => list.value.find((g) => g.enabled)?.id ?? n
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 6px 0;
   font-size: 12px;
   color: var(--txt-1);
+}
+.opt-row > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .group-label {
   margin: 10px 0 2px;
@@ -159,20 +170,39 @@ const firstEnabledId = computed(() => list.value.find((g) => g.enabled)?.id ?? n
   line-height: 1.5;
 }
 .mask-toolbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
   gap: 6px;
   margin-bottom: 8px;
 }
 .mask-toolbar button {
-  flex: 1;
+  min-width: 0;
+  width: 100%;
   padding: 5px 4px;
   font-size: 11px;
+  line-height: 1.25;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .mask-count {
+  grid-column: 1 / -1;
+  text-align: right;
   font-size: 11px;
   color: var(--txt-2);
   font-variant-numeric: tabular-nums;
+}
+.grad .segmented {
+  flex-wrap: wrap;
+}
+.grad .segmented button {
+  min-width: 0;
+  flex: 1 1 30%;
+  padding: 5px 2px;
+  font-size: 10.5px;
+  line-height: 1.25;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .mask-empty {
   font-size: 11.5px;
@@ -200,6 +230,7 @@ const firstEnabledId = computed(() => list.value.find((g) => g.enabled)?.id ?? n
 }
 .mask-name {
   flex: 1;
+  min-width: 0;
   text-align: left;
   font-size: 12px;
   color: var(--txt-1);
@@ -207,6 +238,8 @@ const firstEnabledId = computed(() => list.value.find((g) => g.enabled)?.id ?? n
   border: none;
   padding: 4px 0;
   cursor: pointer;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .mask-off {
   color: var(--txt-2);

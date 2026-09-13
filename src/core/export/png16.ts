@@ -108,14 +108,40 @@ function zlibStored(raw: Uint8Array): Uint8Array {
   return out.subarray(0, o);
 }
 
-/**
- * 编码 16bit PNG。
- * @param samples Uint16Array，长度 w*h*channels，取值 0..65535
- * @param channels 3=RGB（color type 2），4=RGBA（color type 6）
- */
-export function encodePng16(samples: Uint16Array, w: number, h: number, channels: 3 | 4): Uint8Array {
+/** WebGL FLOAT 读回（行序底部优先）→ PNG 顶起 RGB16；统一在这里翻转，避免导出倒置。 */
+export function rgbaFloatToRgb16TopDown(buf: Float32Array, w: number, h: number): Uint16Array {
+  const out = new Uint16Array(w * h * 3);
+  for (let y = 0; y < h; y++) {
+    const sy = h - 1 - y;
+    for (let x = 0; x < w; x++) {
+      const si = (sy * w + x) * 4;
+      const di = (y * w + x) * 3;
+      out[di] = Math.max(0, Math.min(65535, Math.round(buf[si] * 65535)));
+      out[di + 1] = Math.max(0, Math.min(65535, Math.round(buf[si + 1] * 65535)));
+      out[di + 2] = Math.max(0, Math.min(65535, Math.round(buf[si + 2] * 65535)));
+    }
+  }
+  return out;
+}
+
+/** WebGL UNSIGNED_BYTE 读回（行序底部优先）→ PNG 顶起 RGB16。 */
+export function rgba8ToRgb16TopDown(buf: Uint8Array, w: number, h: number): Uint16Array {
+  const out = new Uint16Array(w * h * 3);
+  for (let y = 0; y < h; y++) {
+    const sy = h - 1 - y;
+    for (let x = 0; x < w; x++) {
+      const si = (sy * w + x) * 4;
+      const di = (y * w + x) * 3;
+      out[di] = buf[si] * 257;
+      out[di + 1] = buf[si + 1] * 257;
+      out[di + 2] = buf[si + 2] * 257;
+    }
+  }
+  return out;
+}
+
+function png16Raw(samples: Uint16Array, w: number, h: number, channels: 3 | 4): Uint8Array {
   if (samples.length < w * h * channels) throw new Error('[png16] 样本数与尺寸不符');
-  const colorType = channels === 4 ? 6 : 2;
   const rowBytes = w * channels * 2;
   const raw = new Uint8Array(h * (1 + rowBytes));
   let rp = 0;
@@ -128,8 +154,11 @@ export function encodePng16(samples: Uint16Array, w: number, h: number, channels
       raw[rp++] = v & 0xff;
     }
   }
-  const idat = zlibStored(raw);
+  return raw;
+}
 
+function png16WithIdat(idat: Uint8Array, w: number, h: number, channels: 3 | 4): Uint8Array {
+  const colorType = channels === 4 ? 6 : 2;
   const wtr = new ByteWriter();
   // PNG signature
   wtr.push(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
@@ -147,4 +176,28 @@ export function encodePng16(samples: Uint16Array, w: number, h: number, channels
   writeChunk(wtr, 'IDAT', idat);
   writeChunk(wtr, 'IEND', new Uint8Array(0));
   return wtr.toBytes();
+}
+
+async function zlibDeflate(raw: Uint8Array): Promise<Uint8Array> {
+  if (typeof CompressionStream === 'undefined') return zlibStored(raw);
+  const stream = new CompressionStream('deflate');
+  const writer = stream.writable.getWriter();
+  void writer.write(raw);
+  void writer.close();
+  const compressed = await new Response(stream.readable).arrayBuffer();
+  return new Uint8Array(compressed);
+}
+
+/**
+ * 编码 16bit PNG。
+ * @param samples Uint16Array，长度 w*h*channels，取值 0..65535
+ * @param channels 3=RGB（color type 2），4=RGBA（color type 6）
+ */
+export function encodePng16(samples: Uint16Array, w: number, h: number, channels: 3 | 4): Uint8Array {
+  return png16WithIdat(zlibStored(png16Raw(samples, w, h, channels)), w, h, channels);
+}
+
+/** 导出线程优先走原生 deflate 压缩：体积和写盘耗时远低于 stored 块。 */
+export async function encodePng16Async(samples: Uint16Array, w: number, h: number, channels: 3 | 4): Promise<Uint8Array> {
+  return png16WithIdat(await zlibDeflate(png16Raw(samples, w, h, channels)), w, h, channels);
 }

@@ -21,15 +21,19 @@ const list = asar.listPackage(target).map((p) => String(p).split('\\').join('/')
 const hasHtml = list.includes('/dist/index.html');
 const assetCount = list.filter((p) => p.startsWith('/dist/assets/')).length;
 const hasMain = list.includes('/dist-electron/main.cjs');
+const cwmPresetCount = list.filter((p) => p.startsWith('/dist/cwm/presets/')).length;
+const hasCwmLogo = list.includes('/dist/cwm/cwm-logo.png');
 
 console.log('[check-asar] ' + target);
 console.log('  条目总数：' + list.length);
 console.log('  /dist/index.html   ：' + (hasHtml ? 'OK' : '缺失'));
 console.log('  /dist/assets/*     ：' + assetCount + ' 个');
 console.log('  /dist-electron/main.cjs：' + (hasMain ? 'OK' : '缺失'));
+console.log('  /dist/cwm/presets/*  ：' + cwmPresetCount + ' 个');
+console.log('  /dist/cwm/cwm-logo.png：' + (hasCwmLogo ? 'OK' : '缺失'));
 
-if (!hasHtml || assetCount === 0) {
-  console.error('[check-asar] 失败：渲染层未打进 asar，安装后会黑屏。');
+if (!hasHtml || assetCount === 0 || cwmPresetCount === 0 || !hasCwmLogo) {
+  console.error('[check-asar] 失败：渲染层或水印工作室资源未打进 asar。');
   console.error('[check-asar] 常见原因：electron-builder 未读取 electron-builder.yml，');
   console.error('[check-asar] 导致输出目录落在 Vite 的 dist/ 下而被自动排除。');
   process.exit(1);

@@ -24,9 +24,11 @@ import { decodeForPreview, type ImageMeta } from '@/core/image/imageLoader';
 import { cubeToLutData, parseCube } from '@/core/render/lut/cubeParser';
 import { lutManager, type BuiltinLutInfo } from '@/core/render/lut/lutManager';
 import type { LutData } from '@/core/render/lut/lutTypes';
-import type { EditParams } from '@/types/EditParams';
+import type { AdjustParams, EditParams } from '@/types/EditParams';
 import { bakeLutFromParams } from '@/core/render/lut/bakeCurrentLut';
 import { t } from '@/i18n';
+import { computeAutoAdjustments } from '@/core/analysis/AutoEnhanceEngine';
+import type { AnalysisResult } from '@/core/analysis/HistogramAnalyzer';
 
 /** camera-watermark「应用」回传（与 env.d.ts 的 CwmApplyResult 同构） */
 interface CwmApplyPayload {
@@ -113,6 +115,8 @@ export const useEditorStore = defineStore('editor', () => {
     const prev = undoStack(history, cloneParams(params));
     if (!prev) return;
     restoreParams(prev);
+    autoEnhanceApplied.value = false;
+    autoEnhanceBefore = null;
     refreshHistoryFlags();
   }
 
@@ -120,6 +124,8 @@ export const useEditorStore = defineStore('editor', () => {
     const next = redoStack(history, cloneParams(params));
     if (!next) return;
     restoreParams(next);
+    autoEnhanceApplied.value = false;
+    autoEnhanceBefore = null;
     refreshHistoryFlags();
   }
 
@@ -449,6 +455,32 @@ export const useEditorStore = defineStore('editor', () => {
     mutate((p) => {
       p.adjust = cloneParams(defaultEditParams).adjust;
     });
+    autoEnhanceApplied.value = false;
+    autoEnhanceBefore = null;
+  }
+
+  const autoEnhancing = ref(false);
+  const autoEnhanceApplied = ref(false);
+  let autoEnhanceBefore: AdjustParams | null = null;
+
+  /** 分析当前预览并一次性应用规则引擎生成的影调参数。 */
+  async function applyAutoEnhance(): Promise<boolean> {
+    if (!hasImage.value || autoEnhancing.value || !analyzeImageCapture) return false;
+    autoEnhancing.value = true;
+    try {
+      const analysis = await analyzeImageCapture();
+      const adjustments = computeAutoAdjustments(analysis);
+      autoEnhanceBefore = cloneParams(params).adjust;
+      mutate((p) => Object.assign(p.adjust, adjustments));
+      autoEnhanceApplied.value = true;
+      toast('success', t('msg.autoEnhanceDone'));
+      return true;
+    } catch (err) {
+      toast('error', t('msg.autoEnhanceFail', { v: err instanceof Error ? err.message : String(err) }));
+      return false;
+    } finally {
+      autoEnhancing.value = false;
+    }
   }
   /** 重置全部调色分组（影调 / 曲线 / HSL / 分级 / 局部 / 限定器 / Soft Clip / 效果），不动几何与 LUT */
   function resetColorAll(): void {
@@ -465,6 +497,8 @@ export const useEditorStore = defineStore('editor', () => {
       p.tonemap = d.tonemap;
       selectedGradId.value = null;
     });
+    autoEnhanceApplied.value = false;
+    autoEnhanceBefore = null;
   }
 
   // ---------- 多局部蒙版（v0.4.0） ----------
@@ -507,6 +541,8 @@ export const useEditorStore = defineStore('editor', () => {
   }
   function selectGradation(id: string | null): void {
     selectedGradId.value = id;
+    // 画笔绘制是蒙版级模式；切到线性/径向/亮度/颜色时必须退出，避免画布指针被画笔拦截。
+    if (paintBrushId.value && paintBrushId.value !== id) paintBrushId.value = null;
   }
   /** 修改指定蒙版（滑块拖动走 scrub） */
   function mutateGrad(id: string, fn: (g: EditParams['gradations'][number]) => void, scrub = false): void {
@@ -558,6 +594,10 @@ export const useEditorStore = defineStore('editor', () => {
   let editedCapture: (() => string) | null = null;
   function registerEditedCapture(fn: (() => string) | null): void {
     editedCapture = fn;
+  }
+  let analyzeImageCapture: (() => Promise<AnalysisResult>) | null = null;
+  function registerAnalyzeCapture(fn: (() => Promise<AnalysisResult>) | null): void {
+    analyzeImageCapture = fn;
   }
   let wmPreviewTimer: ReturnType<typeof setTimeout> | null = null;
   /** IPC/contextBridge 不能克隆 Vue reactive Proxy；水印状态进出主进程前统一转成普通对象。 */
@@ -628,6 +668,17 @@ export const useEditorStore = defineStore('editor', () => {
     };
     wmPreviewUrl.value = payload.previewDataUrl;
     wmPreviewStale.value = false;
+  }
+
+  /** 恢复自动优化前的 adjust；自动优化开关关闭时调用。 */
+  function resetAutoEnhance(): void {
+    const before = autoEnhanceBefore;
+    autoEnhanceBefore = null;
+    autoEnhanceApplied.value = false;
+    if (!before) return;
+    mutate((p) => {
+      p.adjust = { ...before };
+    });
   }
 
   /** 移除水印 */
@@ -1077,6 +1128,8 @@ export const useEditorStore = defineStore('editor', () => {
     Object.assign(params, d);
     params.geometry = d.geometry;
     params.adjust = d.adjust;
+    autoEnhanceApplied.value = false;
+    autoEnhanceBefore = null;
     params.curve = d.curve;
     params.hsl = d.hsl;
     params.colorGrade = d.colorGrade;
@@ -1155,7 +1208,7 @@ export const useEditorStore = defineStore('editor', () => {
     builtinLuts, externalLut, lutData, lutVersion, lutLoading, currentLutName,
     userLuts, loadUserLuts, importUserLuts, selectUserLut, renameUserLut, categorizeUserLut, removeUserLut,
     exportOptions, exporting,
-    wmPreviewUrl, wmPreviewStale, registerEditedCapture, scheduleWmPreview,
+    wmPreviewUrl, wmPreviewStale, registerEditedCapture, registerAnalyzeCapture, scheduleWmPreview,
     setWatermarkEnabled, openCwmStudio, applyCwmResult, clearWatermark, refreshWmPreview,
     // history / mutate
     mutate, saveSnapshot, endScrub, scheduleCommit, undoEdit, redoEdit,
@@ -1168,6 +1221,7 @@ export const useEditorStore = defineStore('editor', () => {
     sessionImages, openSessionImage, removeSessionImage, restoreSession, openRecent, saveSessionNow,
     // geometry
     rotate90, toggleFlipH, toggleFlipV, setCrop, resetCrop, resetGeometryAll, resetAdjust, resetColorAll,
+    autoEnhancing, autoEnhanceApplied, applyAutoEnhance, resetAutoEnhance,
     // 多局部蒙版
     selectedGradId, addGradation, removeGradation, duplicateGradation, selectGradation, mutateGrad,
     // picker / split / clip / mode / zoom / export / project

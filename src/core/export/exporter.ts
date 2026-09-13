@@ -91,7 +91,17 @@ export async function runExport(
     return { jobId: -1, ok: true, bytes: bytes16, width: inter.width, height: inter.height };
   }
 
-  let bmp = await createImageBitmap(new Blob([inter.bytes], { type: 'image/png' }));
+  let bmp: ImageBitmap;
+  if (inter.raw) {
+    const size = inter.width * inter.height * 4;
+    if (inter.bytes.byteLength < size) {
+      return { jobId: -1, ok: false, error: '导出像素数据不完整' };
+    }
+    const rgba = new Uint8ClampedArray(inter.bytes.buffer, inter.bytes.byteOffset, size);
+    bmp = await createImageBitmap(new ImageData(rgba, inter.width, inter.height));
+  } else {
+    bmp = await createImageBitmap(new Blob([inter.bytes], { type: 'image/png' }));
+  }
   if (check()) {
     bmp.close();
     return cancelledResponse();

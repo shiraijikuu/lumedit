@@ -11,6 +11,7 @@ import {
   type TargetFormat,
 } from './gpuUtils';
 import { TexturePool, releaseTarget } from './texturePool';
+import { HistogramAnalyzer, type AnalysisResult } from '../analysis/HistogramAnalyzer';
 
 export class ImageRenderer {
   private readonly canvas: HTMLCanvasElement;
@@ -306,6 +307,21 @@ export class ImageRenderer {
       return null;
     } finally {
       if (fbo) gl.deleteFramebuffer(fbo);
+    }
+  }
+
+  /** 自动优化：把当前预览结果降采样到 256×256，返回直方图与图像指标。 */
+  async analyzeImage(): Promise<AnalysisResult> {
+    const gl = this.gl;
+    const texture = this.currentTexture ?? this.inputTexture;
+    if (!gl || !texture) throw new Error('[ImageRenderer] no image to analyze');
+    const width = texture === this.inputTexture ? this.inputW : this.outW;
+    const height = texture === this.inputTexture ? this.inputH : this.outH;
+    const analyzer = new HistogramAnalyzer();
+    try {
+      return analyzer.analyze(gl, texture, width, height);
+    } finally {
+      analyzer.destroy();
     }
   }
 

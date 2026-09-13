@@ -66,7 +66,7 @@ const SOCIAL = {
   github: 'https://github.com/shiraijikuu/lumedit',
 };
 
-const version = ref('0.2.0');
+const version = ref('0.5.0');
 if (window.api?.appMeta) {
   window.api.appMeta().then((m) => (version.value = m.version)).catch(() => {});
 }

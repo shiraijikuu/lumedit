@@ -19,6 +19,7 @@ import {
   detectFloatRenderTarget,
   createTargetTexture,
   readFramebufferBytes,
+  bitmapToTextureSource,
 } from '../../src/core/render/gpuUtils';
 import { bakeLutFromParams } from '../../src/core/render/lut/bakeCurrentLut';
 import { BlitProgram } from '../../src/core/render/BlitProgram';
@@ -38,10 +39,12 @@ import { EffectsStage } from '../../src/core/render/stages/EffectsStage';
 import { ToneRollStage } from '../../src/core/render/stages/ToneRollStage';
 import { QualifierStage } from '../../src/core/render/stages/QualifierStage';
 import { ensureParams, cloneParams, linearCurve, HSL_HUES, createGradation, normalizeGradation, MAX_GRADATIONS, type GradationItem } from '../../src/types/EditParams';
-import { encodePng16 } from '../../src/core/export/png16';
+import { encodePng16, encodePng16Async, rgba8ToRgb16TopDown, rgbaFloatToRgb16TopDown } from '../../src/core/export/png16';
 import { analyzeScopes, rgbToCbCr, vectorscopeTargets } from '../../src/core/scope/scopes';
 import zhDict from '../../src/i18n/locales/zh-CN';
 import enDict from '../../src/i18n/locales/en';
+import { analyzePixels, HistogramAnalyzer, type AnalysisResult } from '../../src/core/analysis/HistogramAnalyzer';
+import { computeAutoAdjustments } from '../../src/core/analysis/AutoEnhanceEngine';
 
 let passed = 0;
 let failed = 0;
@@ -91,7 +94,7 @@ function uploadTexture(gl: WebGL2RenderingContext, bmp: ImageBitmap): WebGLTextu
   const tex = gl.createTexture()!;
   gl.bindTexture(gl.TEXTURE_2D, tex);
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, bmp);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, bitmapToTextureSource(bmp));
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -602,6 +605,11 @@ function testEnsureParams(): void {
   c.adjust.exposure = 1.5;
   c.hsl.red.hue = 0.9;
   ok('cloneParams 深拷贝：改副本不影响原', p.adjust.exposure !== 1.5 && p.hsl.red.hue !== 0.9);
+  p.gradations = [createGradation('brush')];
+  p.gradations[0].strokes = [{ pts: [[0.1, 0.2], [0.3, 0.4]], radius: 0.08, hardness: 0.7 }];
+  const cg = cloneParams(p);
+  cg.gradations[0].strokes[0].pts[0][0] = 0.9;
+  ok('cloneParams 深拷贝画笔 strokes（Worker 克隆安全）', p.gradations[0].strokes[0].pts[0][0] === 0.1 && cg.gradations[0].strokes !== p.gradations[0].strokes);
   ok('ensureParams(null) 安全返回默认', !!ensureParams(null).geometry);
 }
 
@@ -1258,8 +1266,7 @@ async function testAdvancedColor(): Promise<void> {
       };
       const inStroke = readAt(6, 8);
       const outside = readAt(14, 2);
-        // TODO(0.5.0): 笔画内应为 ~239（线性光 +2EV），当前 0 —— 画笔光柵化待排查（见 HANDOFF-v0.5.0-masks.md）
-    ok('画笔蒙版：笔画内（诊断，暂不断言）', inStroke[0] >= 0, `in=${inStroke[0]}`);
+      ok('画笔蒙版：笔画内全量生效', inStroke[0] >= 220, `in=${inStroke[0]}`);
       ok('画笔蒙版：笔画外不受影响', outside[0] < 140, `out=${outside[0]}`);
       stage.destroy();
       if (out !== tex) gl.deleteTexture(out);
@@ -1404,17 +1411,10 @@ async function testPng16Orientation(): Promise<void> {
 
   const buf = new Float32Array(S * S * 4);
   gl.readPixels(0, 0, S, S, gl.RGBA, gl.FLOAT, buf);
-  const rgb16 = new Uint16Array(S * S * 3);
-  for (let y = 0; y < S; y++) {
-    for (let x = 0; x < S; x++) {
-      const si = (y * S + x) * 4;
-      const di = (y * S + x) * 3;
-      rgb16[di] = Math.round(Math.min(1, Math.max(0, buf[si])) * 65535);
-      rgb16[di + 1] = Math.round(Math.min(1, Math.max(0, buf[si + 1])) * 65535);
-      rgb16[di + 2] = Math.round(Math.min(1, Math.max(0, buf[si + 2])) * 65535);
-    }
-  }
-  const png = encodePng16(rgb16, S, S, 3);
+  const rgb16 = rgbaFloatToRgb16TopDown(buf, S, S);
+  const byteRows = rgba8ToRgb16TopDown(new Uint8Array([10, 20, 30, 255, 40, 50, 60, 255]), 1, 2);
+  ok('png16 byte 读回正确翻转行序', byteRows[0] === 40 * 257 && byteRows[1] === 50 * 257 && byteRows[2] === 60 * 257);
+  const png = await encodePng16Async(rgb16, S, S, 3);
   const raw = await inflateZlib([...pngChunks(png)][1].data);
   const rowBytes = 1 + S * 3 * 2; // 25
   const topR = (raw[1] << 8) | raw[2];
@@ -1477,6 +1477,60 @@ function testGradationModel(): void {
   ok('normalize null fallback', fb.id === 'g3' && fb.x1 === 0.15);
 }
 
+function fakeAnalysis(patch: Partial<AnalysisResult>): AnalysisResult {
+  return {
+    histogram: { luma: new Uint32Array(256), r: new Uint32Array(256), g: new Uint32Array(256), b: new Uint32Array(256) },
+    blackPoint: { r: 0, g: 0, b: 0 },
+    whitePoint: { r: 255, g: 255, b: 255 },
+    averageColor: { r: 0.5, g: 0.5, b: 0.5 },
+    contrastScore: 0.65,
+    isLowContrast: false,
+    meanLuma: 0.5,
+    meanSaturation: 0.35,
+    ...patch,
+  };
+}
+
+async function testAutoEnhance(): Promise<void> {
+  logs.push('[auto enhance]');
+
+  // 纯函数直方图：32 个红色像素
+  const pixels = new Uint8Array(32 * 4);
+  for (let i = 0; i < 32; i++) pixels.set([220, 40, 40, 255], i * 4);
+  const stats = analyzePixels(pixels);
+  ok('直方图：R 通道总数正确', stats.histogram.r.reduce((a, b) => a + b, 0) === 32);
+  ok('直方图：平均色接近红色', Math.abs(stats.averageColor.r - 220 / 255) < 0.01 && stats.averageColor.b < 0.2);
+
+  const dark = computeAutoAdjustments(fakeAnalysis({ meanLuma: 0.16 }));
+  ok('自动优化：欠曝增加曝光', (dark.exposure ?? 0) > 0 && (dark.exposure ?? 0) <= 1, `ev=${dark.exposure}`);
+  const bright = computeAutoAdjustments(fakeAnalysis({ meanLuma: 0.9 }));
+  ok('自动优化：过曝降低曝光', (bright.exposure ?? 0) < 0, `ev=${bright.exposure}`);
+  const cast = computeAutoAdjustments(fakeAnalysis({ averageColor: { r: 0.3, g: 0.48, b: 0.7 } }));
+  ok('自动优化：蓝偏色加暖', (cast.temperature ?? 0) > 0.2, `temp=${cast.temperature}`);
+  const low = computeAutoAdjustments(fakeAnalysis({ contrastScore: 0.22, meanSaturation: 0.1, isLowContrast: true }));
+  ok('自动优化：低对比保守增强', (low.contrast ?? 0) > 0 && (low.contrast ?? 0) <= 0.4, `c=${low.contrast}`);
+  ok('自动优化：低饱和小幅提升', (low.saturation ?? 0) > 0 && (low.saturation ?? 0) <= 0.3, `s=${low.saturation}`);
+  const normal = computeAutoAdjustments(fakeAnalysis({}));
+  ok('自动优化：正常照片基本不调整', Object.keys(normal).length === 0, JSON.stringify(normal));
+  const extreme = computeAutoAdjustments(fakeAnalysis({ meanLuma: 0.01, meanSaturation: 0 }));
+  ok('自动优化：极暗/极低饱和限幅', (extreme.exposure ?? 0) <= 0.8 && (extreme.saturation ?? 0) <= 0.3);
+
+  // GPU 分析器端到端
+  const gl = createGL();
+  const bmp = await solidBitmap(32, 24, [0.2, 0.4, 0.8]);
+  const tex = uploadTexture(gl, bmp);
+  const analyzer = new HistogramAnalyzer();
+  const analysisStart = performance.now();
+  const gpu = analyzer.analyze(gl, tex, 32, 24);
+  const analysisMs = performance.now() - analysisStart;
+  ok('GPU 直方图：分析 < 100ms', analysisMs < 100, analysisMs.toFixed(1) + 'ms');
+  ok('GPU 直方图：采样总数 256²', gpu.histogram.luma.reduce((a, b) => a + b, 0) === 256 * 256);
+  ok('GPU 直方图：平均色接近源色', Math.abs(gpu.averageColor.b - 0.8) < 0.03, `b=${gpu.averageColor.b}`);
+  analyzer.destroy();
+  gl.deleteTexture(tex);
+  bmp.close();
+}
+
 async function main(): Promise<void> {
   const logEl = document.getElementById('log');
   const write = (t: string) => {
@@ -1501,6 +1555,7 @@ async function main(): Promise<void> {
     await testNewStagesNeutral();
     await testColorEngine();
     await testAdvancedColor();
+    await testAutoEnhance();
     await testPng16();
     await testPng16Orientation();
     testScopes();

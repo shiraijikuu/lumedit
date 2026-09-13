@@ -1,5 +1,17 @@
 <template>
   <div class="color-panel">
+    <div class="auto-bar">
+      <button class="auto-btn" type="button" :disabled="!store.hasImage || store.autoEnhancing" @click="store.applyAutoEnhance()">
+        <span class="auto-icon">✦</span>
+        <span>{{ store.autoEnhancing ? t('adjust.autoRunning') : t('adjust.autoEnhance') }}</span>
+      </button>
+      <p>{{ t('adjust.autoHint') }}</p>
+      <div v-if="store.autoEnhanceApplied" class="auto-reset">
+        <span>{{ t('adjust.autoApplied') }}</span>
+        <ToggleSwitch :model-value="store.autoEnhanceApplied" @update:model-value="onAutoEnhanceSwitch" />
+      </div>
+    </div>
+
     <CollapseSection :default-open="false">
       <template #title>{{ t('scope.title') }}</template>
       <Scopes />
@@ -121,6 +133,7 @@ import { useEditorStore } from '@/stores/editor';
 import { usePresetStore } from '@/stores/presets';
 import { t } from '@/i18n';
 import CollapseSection from '../ui/CollapseSection.vue';
+import ToggleSwitch from '../ui/ToggleSwitch.vue';
 import Scopes from '../ui/Scopes.vue';
 import ToneSection from './color/ToneSection.vue';
 import CurveSection from './color/CurveSection.vue';
@@ -134,6 +147,10 @@ import ToneRollSection from './color/ToneRollSection.vue';
 const store = useEditorStore();
 const presetStore = usePresetStore();
 const saveName = ref('');
+
+function onAutoEnhanceSwitch(on: boolean): void {
+  if (!on) store.resetAutoEnhance();
+}
 
 function savePreset(): void {
   const name = saveName.value.trim();
@@ -198,6 +215,53 @@ function resetAll(): void {
 <style scoped>
 .color-panel {
   padding-bottom: 4px;
+}
+.auto-bar {
+  padding: 12px 16px 0;
+}
+.auto-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--accent);
+  background: linear-gradient(135deg, var(--accent-soft), var(--bg-2));
+  color: var(--txt-0);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter .15s ease, opacity .15s ease;
+}
+.auto-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.auto-btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+.auto-icon {
+  color: var(--accent);
+  font-size: 15px;
+  line-height: 1;
+}
+.auto-bar p {
+  margin: 7px 2px 0;
+  color: var(--txt-2);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+.auto-reset {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  color: var(--txt-1);
+  font-size: 11.5px;
 }
 button.mini {
   padding: 2px 8px;

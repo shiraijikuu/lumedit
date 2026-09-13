@@ -56,8 +56,12 @@
           <template v-if="!o.radial">
             <line
               :x1="o.x1" :y1="o.y1" :x2="o.x2" :y2="o.y2"
-              class="grad-line"
+              class="grad-hit"
               @pointerdown.stop="gradMoveStart(o.id, $event)"
+            />
+            <line
+              :x1="o.x1" :y1="o.y1" :x2="o.x2" :y2="o.y2"
+              class="grad-line"
             />
             <polygon v-if="o.selected" :points="arrowOf(o)" class="grad-arrow" />
           </template>
@@ -246,8 +250,8 @@ interface GradOverlay {
 }
 const gradOverlays = computed<GradOverlay[]>(() => {
   if (isCrop.value) return [];
-  return store.params.gradations
-    .filter((g) => g.enabled)
+  const items = store.params.gradations
+    .filter((g) => g.enabled && (g.type === 'linear' || g.type === 'radial'))
     .map((g) => ({
       id: g.id,
       x1: g.x1 * 100,
@@ -258,6 +262,8 @@ const gradOverlays = computed<GradOverlay[]>(() => {
       r: Math.hypot(g.x2 - g.x1, g.y2 - g.y1) * 100,
       selected: store.selectedGradId === g.id,
     }));
+  // 选中项最后绘制，保证重叠蒙版时拖拽命中当前选中的蒙版。
+  return items.sort((a, b) => Number(a.selected) - Number(b.selected));
 });
 
 function arrowOf(o: GradOverlay): string {
@@ -418,6 +424,27 @@ function onWheel(e: WheelEvent): void {
 
 function onViewportPointerDown(e: PointerEvent): void {
   if (e.button === 2) return;
+  // 画笔蒙版：在画布上按住拖动，按一次笔画进入撤销栈
+  if (store.paintBrushId) {
+    e.preventDefault();
+    const id = store.paintBrushId;
+    const p = stageNorm(e);
+    store.brushBeginStroke(id, p.x, p.y);
+    const move = (ev: PointerEvent) => {
+      const q = stageNorm(ev);
+      store.brushAddPoint(id, q.x, q.y);
+    };
+    const up = () => {
+      store.brushEndStroke();
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    return;
+  }
   // 吸管取样（白平衡 / 取色限定器）：点击取样，不触发平移
   if (store.pickerActive || store.qualifierPicker) {
     if (isCrop.value) {
@@ -612,6 +639,8 @@ function ensureRenderer(): boolean {
   });
   // 供水印工作室 / 离屏合成获取「调色后无水印」底图
   store.registerEditedCapture(() => renderer?.captureEdited(2000) ?? '');
+  // 自动优化分析当前预览纹理
+  store.registerAnalyzeCapture(() => renderer?.analyzeImage() ?? Promise.reject(new Error('renderer not ready')));
   applyStages();
   feedLut();
   renderer.setParams(store.params);
@@ -642,6 +671,7 @@ onUnmounted(() => {
   resizeObserver?.disconnect();
   window.removeEventListener('keydown', onKey);
   store.registerEditedCapture(null);
+  store.registerAnalyzeCapture(null);
   renderer?.destroy();
   renderer = null;
   editBundle.dispose();
@@ -766,8 +796,16 @@ watch(
   width: 100%;
   height: 100%;
   cursor: move;
+  pointer-events: none;
+}
+.grad-overlay .grad-hit {
+  stroke: transparent;
+  stroke-width: 18;
+  vector-effect: non-scaling-stroke;
+  pointer-events: stroke;
 }
 .grad-overlay .grad-line {
+  pointer-events: none;
   stroke: var(--accent, #4da3ff);
   stroke-width: 2;
   vector-effect: non-scaling-stroke;
@@ -780,14 +818,16 @@ watch(
   fill: var(--accent, #4da3ff);
 }
 .grad-overlay .grad-ellipse {
-  fill: none;
+  fill: rgba(0, 0, 0, 0.001);
   stroke: var(--accent, #4da3ff);
   stroke-width: 2;
   vector-effect: non-scaling-stroke;
   stroke-dasharray: 6 4;
+  pointer-events: all;
 }
 .grad-overlay .grad-handle {
   position: absolute;
+  pointer-events: auto;
   width: 13px;
   height: 13px;
   border-radius: 50%;

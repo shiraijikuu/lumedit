@@ -344,6 +344,16 @@ export function createGradation(type: 'linear' | 'radial' | 'brush' | 'luminance
   };
 }
 
+function cloneStrokes(strokes: MaskStroke[] | null | undefined): MaskStroke[] {
+  return Array.isArray(strokes)
+    ? strokes.map((st) => ({
+        radius: st.radius,
+        hardness: st.hardness,
+        pts: Array.isArray(st.pts) ? st.pts.map(([x, y]) => [x, y] as [number, number]) : [],
+      }))
+    : [];
+}
+
 function clampNum(v: unknown, lo: number, hi: number, fallback: number): number {
   const n = typeof v === 'number' && Number.isFinite(v) ? v : fallback;
   return Math.min(hi, Math.max(lo, n));
@@ -362,7 +372,7 @@ export function normalizeGradation(g: Partial<GradationItem> | null | undefined,
     hueCenter: clampNum(g?.hueCenter, 0, 360, 0),
     hueRange: clampNum(g?.hueRange, 0, 180, 30),
     hueFeather: clampNum(g?.hueFeather, 0, 90, 15),
-    strokes: Array.isArray(g?.strokes) ? g.strokes : [],
+    strokes: cloneStrokes(g?.strokes),
     x1: clampNum(g?.x1, -0.5, 1.5, 0.15),
     y1: clampNum(g?.y1, -0.5, 1.5, 0.5),
     x2: clampNum(g?.x2, -0.5, 1.5, 0.85),
@@ -458,8 +468,10 @@ export function cloneParams(p: EditParams): EditParams {
       highlights: { ...p.colorGrade.highlights },
     },
     effects: { ...p.effects },
-    gradation: { ...p.gradation },
-    gradations: Array.isArray(p.gradations) ? p.gradations.map((g) => ({ ...g })) : [],
+    gradation: { ...p.gradation, strokes: cloneStrokes(p.gradation.strokes) },
+    gradations: Array.isArray(p.gradations)
+      ? p.gradations.map((g) => ({ ...g, strokes: cloneStrokes(g.strokes) }))
+      : [],
     qualifier: { ...defaultEditParams.qualifier, ...(p.qualifier ?? {}) },
     tonemap: { ...defaultEditParams.tonemap, ...(p.tonemap ?? {}) },
     lut: { ...p.lut },

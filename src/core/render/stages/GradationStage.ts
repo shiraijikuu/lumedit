@@ -234,6 +234,7 @@ export class GradationStage implements RenderStage {
   private sLoc: Record<string, WebGLUniformLocation | null> = {};
   private aLoc: Record<string, WebGLUniformLocation | null> = {};
   private bLoc: Record<string, number> = {};
+  private bAspectLoc: WebGLUniformLocation | null = null;
   /** 1×1 空画笔纹理占位（画笔蒙版未绘制时的中性空纹理） */
   private emptyTex: WebGLTexture | null = null;
 
@@ -243,6 +244,7 @@ export class GradationStage implements RenderStage {
     this.shapeProg = createProgram(gl, VERT, SHAPE_FRAG, 'GradationShape');
     this.applyProg = createProgram(gl, VERT, APPLY_FRAG, 'GradationApply');
     this.brushProg = createProgram(gl, VERT_BRUSH, FRAG_BRUSH, 'GradationBrush');
+    this.bAspectLoc = this.brushProg.uniform('uAspect');
     const quad = createFullscreenQuad(gl, this.applyProg.program);
     this.vao = quad.vao;
     this.vbo = quad.vbo;
@@ -387,23 +389,26 @@ export class GradationStage implements RenderStage {
         gl.clear(gl.COLOR_BUFFER_BIT);
         const verts = brushVerts(g.strokes, ctx.width / ctx.height);
         if (verts.length) {
+          gl.disable(gl.CULL_FACE);
           gl.useProgram(this.brushProg!.program);
           gl.bindVertexArray(this.brushVao);
           gl.bindBuffer(gl.ARRAY_BUFFER, this.brushVbo);
           gl.bufferData(gl.ARRAY_BUFFER, verts, gl.DYNAMIC_DRAW);
-          gl.uniform1f(this.bLoc.uAspect, ctx.width / ctx.height);
+          gl.uniform1f(this.bAspectLoc, ctx.width / ctx.height);
           gl.drawArrays(gl.TRIANGLES, 0, verts.length / 8);
           gl.bindVertexArray(null);
         }
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, acc, 0);
         gl.viewport(0, 0, ctx.width, ctx.height);
+        gl.bindVertexArray(this.vao);
       }
 
       // 1) 应用 pass：并集/交集=自身调整；差集=撤销累积调整（无累积可撤则跳过）
       const doApply = subtract ? !first && hasAccEffect : selfNonZero;
       if (doApply) {
         const dst = acquireTarget(ctx, ctx.width, ctx.height);
+        gl.bindVertexArray(this.vao);
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, dst, 0);
         if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
@@ -511,6 +516,7 @@ export class GradationStage implements RenderStage {
     this.sLoc = {};
     this.aLoc = {};
     this.bLoc = {};
+    this.bAspectLoc = null;
     this.gl = null;
   }
 }

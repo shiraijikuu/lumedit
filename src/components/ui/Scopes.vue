@@ -144,10 +144,16 @@ function render(): void {
 
   if (mode.value === 'vectorscope') {
     const src = vecImage(cached);
-    // 居中正方形
-    const side = Math.min(W, H);
+    // 留出安全边距，目标色标签不贴边裁切
+    const pad = Math.max(8, Math.round(8 * dpr));
+    const side = Math.max(1, Math.min(W, H) - pad * 2);
+    const originX = (W - side) / 2;
+    const originY = (H - side) / 2;
     ctx.save();
-    ctx.translate((W - side) / 2, (H - side) / 2);
+    ctx.beginPath();
+    ctx.rect(originX, originY, side, side);
+    ctx.clip();
+    ctx.translate(originX, originY);
     // 参考圆 + 十字
     ctx.strokeStyle = 'rgba(255,255,255,0.14)';
     ctx.beginPath();
@@ -158,15 +164,16 @@ function render(): void {
     ctx.lineTo(side / 2, side);
     ctx.stroke();
     ctx.drawImage(src, 0, 0, side, side);
-    // 目标色标记
+    // 目标色标记：坐标钳制在绘制区内，避免 R/B 等边缘色标被裁掉
     const targets = vectorscopeTargets(cached.vec.n);
     const scale = side / cached.vec.n;
+    const labelPad = 7 * dpr;
     ctx.font = `${10 * dpr}px system-ui`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     for (const [name, p] of Object.entries(targets)) {
-      const x = p.x * scale;
-      const y = p.y * scale;
+      const x = Math.min(side - labelPad, Math.max(labelPad, p.x * scale));
+      const y = Math.min(side - labelPad, Math.max(labelPad, p.y * scale));
       ctx.fillStyle = 'rgba(255,255,255,0.7)';
       ctx.fillText(name, x, y);
     }
@@ -222,6 +229,8 @@ onUnmounted(() => cancelAnimationFrame(raf));
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
+  overflow: hidden;
 }
 .scope-tabs {
   display: flex;
@@ -229,8 +238,12 @@ onUnmounted(() => cancelAnimationFrame(raf));
 }
 .scope-tab {
   flex: 1;
+  min-width: 0;
   padding: 5px 0;
   font-size: 11px;
+  line-height: 1.2;
+  white-space: normal;
+  overflow-wrap: anywhere;
   border-radius: 7px;
   border: 1px solid var(--line);
   background: transparent;
@@ -245,7 +258,10 @@ onUnmounted(() => cancelAnimationFrame(raf));
 }
 .scope-canvas {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   height: 120px;
+  box-sizing: border-box;
   display: block;
   border-radius: 8px;
   background: #0a0a0c;

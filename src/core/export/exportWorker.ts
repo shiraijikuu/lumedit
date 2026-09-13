@@ -10,7 +10,7 @@ import { runPipeline } from '../render/renderPipeline';
 import type { RenderContext } from '../render/RenderStage';
 import { createEditStageBundle } from '../render/editStages';
 import type { LutData } from '../render/lut/lutTypes';
-import { encodePng16 } from './png16';
+import { encodePng16Async, rgba8ToRgb16TopDown, rgbaFloatToRgb16TopDown } from './png16';
 
 export type ExportFormat = 'jpeg' | 'png' | 'webp' | 'png16';
 
@@ -34,6 +34,8 @@ export interface ExportResponse {
   jobId: number;
   ok: boolean;
   bytes?: Uint8Array;
+  /** true = bytes 为顶起顺序 RGBA8 原始像素；false/缺省 = 已编码文件 */
+  raw?: boolean;
   width?: number;
   height?: number;
   error?: string;
@@ -62,14 +64,14 @@ function uploadInputTexture(
 }
 
 /** 16bit PNG 读回：blit 到浮点目标（与 8bit 同一坐标映射）→ FLOAT 读回 → 顶起翻转 → 编码 */
-function readBackPng16(
+async function readBackPng16(
   gl: WebGL2RenderingContext,
   blit: BlitProgram,
   source: WebGLTexture,
   w: number,
   h: number,
   useFloat: boolean
-): Uint8Array {
+): Promise<Uint8Array> {
   const dst = createTargetTexture(gl, w, h, useFloat ? 'rgba16f' : 'rgba8');
   const fbo = gl.createFramebuffer();
   if (!fbo) throw new Error('16bit 导出：FBO 创建失败');
@@ -81,41 +83,40 @@ function readBackPng16(
   gl.viewport(0, 0, w, h);
   blit.draw(gl, source);
 
-  const rgb16 = new Uint16Array(w * h * 3);
+  let rgb16: Uint16Array;
   if (useFloat) {
     const buf = new Float32Array(w * h * 4);
     gl.readPixels(0, 0, w, h, gl.RGBA, gl.FLOAT, buf);
-    // 输入纹理上传时已 UNPACK_FLIP_Y，readPixels 行序即图像顶起顺序，直接编码、不再翻转
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const si = (y * w + x) * 4;
-        const di = (y * w + x) * 3;
-        rgb16[di] = Math.max(0, Math.min(65535, Math.round(buf[si] * 65535)));
-        rgb16[di + 1] = Math.max(0, Math.min(65535, Math.round(buf[si + 1] * 65535)));
-        rgb16[di + 2] = Math.max(0, Math.min(65535, Math.round(buf[si + 2] * 65535)));
-      }
-    }
+    rgb16 = rgbaFloatToRgb16TopDown(buf, w, h);
   } else {
     // 不支持浮点渲染：8bit 读回后等比扩展到 16bit（文件合法，但无额外精度）
     const buf = new Uint8Array(w * h * 4);
     gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const si = (y * w + x) * 4;
-        const di = (y * w + x) * 3;
-        rgb16[di] = buf[si] * 257;
-        rgb16[di + 1] = buf[si + 1] * 257;
-        rgb16[di + 2] = buf[si + 2] * 257;
-      }
-    }
+    rgb16 = rgba8ToRgb16TopDown(buf, w, h);
   }
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.deleteFramebuffer(fbo);
   gl.deleteTexture(dst);
-  return encodePng16(rgb16, w, h, 3);
+  return encodePng16Async(rgb16, w, h, 3);
 }
 
-async function renderEditedPng(req: ExportRequest): Promise<{ bytes: Uint8Array; width: number; height: number }> {
+/** 从当前已绑定的 8bit FBO 读回，并翻转为 PNG/Canvas 顶起顺序。 */
+function readCurrentFramebufferRgba8TopDown(
+  gl: WebGL2RenderingContext,
+  w: number,
+  h: number
+): Uint8Array {
+  const buf = new Uint8Array(w * h * 4);
+  gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+  const out = new Uint8Array(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    const sy = h - 1 - y;
+    out.set(buf.subarray(sy * w * 4, (sy + 1) * w * 4), y * w * 4);
+  }
+  return out;
+}
+
+async function renderEditedPng(req: ExportRequest): Promise<{ bytes: Uint8Array; raw: boolean; width: number; height: number }> {
   const bitmap = await decodeFull(req.buffer, req.meta);
 
   const glCanvas = new OffscreenCanvas(bitmap.width, bitmap.height);
@@ -140,10 +141,12 @@ async function renderEditedPng(req: ExportRequest): Promise<{ bytes: Uint8Array;
 
   const blit = new BlitProgram();
   let bytes: Uint8Array;
+  let raw = false;
   if (req.format === 'png16') {
-    // 16bit/通道 PNG：浮点读回 + 手写编码器；不经 8bit canvas，因此不支持水印/缩放（主线程旁路）
-    bytes = readBackPng16(gl, blit, out.texture, out.width, out.height, targetFormat === 'rgba16f');
+    // 16bit/通道 PNG：浮点读回 + 原生 deflate；不经 8bit canvas，因此不支持水印/缩放（主线程旁路）
+    bytes = await readBackPng16(gl, blit, out.texture, out.width, out.height, targetFormat === 'rgba16f');
   } else {
+    // 与旧版一致的 8bit 画布出口，但直接读 RGBA 像素交回主线程，省掉中间 PNG 编解码。
     glCanvas.width = out.width;
     glCanvas.height = out.height;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -151,9 +154,8 @@ async function renderEditedPng(req: ExportRequest): Promise<{ bytes: Uint8Array;
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     blit.draw(gl, out.texture);
-    // 统一以无损 PNG 交回主线程，避免两次有损编码
-    const blob = await glCanvas.convertToBlob({ type: 'image/png' });
-    bytes = new Uint8Array(await blob.arrayBuffer());
+    bytes = readCurrentFramebufferRgba8TopDown(gl, out.width, out.height);
+    raw = true;
   }
 
   stages.forEach((s) => s.destroy());
@@ -164,6 +166,7 @@ async function renderEditedPng(req: ExportRequest): Promise<{ bytes: Uint8Array;
 
   return {
     bytes,
+    raw,
     width: out.width,
     height: out.height,
   };
@@ -177,6 +180,7 @@ workerScope.onmessage = async (e: MessageEvent<ExportRequest>) => {
       jobId: req.jobId,
       ok: true,
       bytes: result.bytes,
+      raw: result.raw,
       width: result.width,
       height: result.height,
     };

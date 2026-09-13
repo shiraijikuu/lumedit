@@ -1,15 +1,15 @@
 {
-  "version": "0.4.0",
-  "build": 6,
-  "coreVersion": "0.4.0",
-  "shellVersion": "0.4.0",
-  "releaseDate": "2026-09-13",
+  "version": "0.5.0",
+  "build": 7,
+  "coreVersion": "0.5.0",
+  "shellVersion": "0.5.0",
+  "releaseDate": "2026-09-14",
   "downloads": {
-    "windows": "https://github.com/shiraijikuu/lumedit/releases/download/v0.4.0/LumEdit-0.4.0-setup.exe"
+    "windows": "https://github.com/shiraijikuu/lumedit/releases/download/v0.5.0/LumEdit-0.5.0-setup.exe"
   },
-  "download_url": "https://github.com/shiraijikuu/lumedit/releases/download/v0.4.0/LumEdit-0.4.0-setup.exe",
+  "download_url": "https://github.com/shiraijikuu/lumedit/releases/download/v0.5.0/LumEdit-0.5.0-setup.exe",
   "notes": {
-    "zh": "LumEdit v0.4.0：半浮点渲染管线、3D LUT 四面体插值、专业示波器（波形/矢量/RGB）、Soft Clip、HSL 取色限定器、多局部蒙版叠加、16bit PNG 导出。",
-    "en": "LumEdit v0.4.0: half-float pipeline, tetrahedral LUT interpolation, scopes, soft clip, HSL qualifier, multi-mask stacking, 16-bit PNG export."
+    "zh": "LumEdit v0.5.0：新增本地一键自动优化与重置；完善蒙版交互并修复导出问题；补齐预设图片水印；优化导出 / 复制速度并修复 PNG16 方向。",
+    "en": "LumEdit v0.5.0 adds local auto enhance with reset, improves mask interaction and export, restores image-watermark presets, speeds up export/copy and fixes PNG16 orientation."
   }
 }
