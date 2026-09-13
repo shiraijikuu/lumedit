@@ -1,8 +1,10 @@
 # LumEdit · 光影轻修
 
+LumEdit 是一个本地优先的 Windows 桌面修图工具。支持 RAW、3D LUT、曲线、HSL、颜色分级、蒙版组合，全部处理在本地完成，照片不上传、无需注册。
+
 **A local-first Windows photo editor with RAW support, 3D LUT, WebGL2 professional color grading, masks, watermark studio, and lossless export.**
 
-一款 **Windows 桌面端、纯本地、零上传** 的轻量单张修图工具。Electron + Vue 3 + Vite + TypeScript + Pinia + WebGL2，专注 RAW / JPEG 导入、裁剪、深化调色、局部蒙版、LUT、水印与保真导出；中英双语界面。
+Electron + Vue 3 + Vite + TypeScript + Pinia + WebGL2 构建，支持中英双语界面。
 
 [![Release](https://img.shields.io/github/v/release/shiraijikuu/lumedit)](https://github.com/shiraijikuu/lumedit/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
