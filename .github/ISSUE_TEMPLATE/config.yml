@@ -1,6 +1,6 @@
 blank_issues_enabled: false
 contact_links:
-  - name: 使用问题 / Discussion
+  - name: 💬 使用问题 / Discussion
     url: https://github.com/shiraijikuu/lumedit/discussions
     about: 如果不确定是否是 Bug，或想讨论使用技巧，请到 Discussions。 / Not sure if it is a bug, or want to discuss tips? Start a Discussion.
   - name: 常见问题 / FAQ
