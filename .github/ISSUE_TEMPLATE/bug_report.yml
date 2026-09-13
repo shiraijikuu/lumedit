@@ -1,0 +1,95 @@
+name: Bug 报告 / Bug Report
+description: 提交一个可复现的问题 / Report a reproducible problem
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。提交前请先搜索已有 Issue，避免重复。
+        信息越完整，修复越快。
+
+        Thank you for your report. Please search existing issues first, and include as much detail as possible.
+  - type: input
+    id: version
+    attributes:
+      label: LumEdit 版本 / Version
+      description: 打开软件 → 关于 / 设置页可以看到版本号。 / Find the version in About or Settings.
+      placeholder: "例如 / e.g. 0.5.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: 操作系统 / Operating System
+      options:
+        - Windows 11
+        - Windows 10
+        - macOS
+        - Linux
+        - 其他（请在描述中说明）/ Other (explain below)
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: 显卡型号 / GPU
+      description: 如果不清楚，可以跳过。 / Skip if you are unsure.
+      placeholder: "例如 / e.g. RTX 3060 / Intel Iris Xe / 集显 / Integrated GPU"
+  - type: textarea
+    id: image-info
+    attributes:
+      label: 出问题的图片信息 / Image Information
+      description: 相机型号、格式、分辨率、文件大小；如果是 RAW，请注明扩展名。 / Camera model, format, resolution and file size; for RAW, include the extension.
+      placeholder: |
+        例如 / e.g.：索尼 a7c2，ARW 格式，7008×4672，约 50MB
+        Sony a7C II, ARW, 7008×4672, about 50MB
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤 / Steps to Reproduce
+      description: 请按顺序写清楚每一步操作。 / List each step in order.
+      placeholder: |
+        1. 导入 xxx.ARW / Import xxx.ARW
+        2. 打开调色面板 / Open the color panel
+        3. 拖动曲线滑块到 xxx / Drag a curve control point to xxx
+        4. 切换到蒙版面板 / Switch to the mask panel
+        5. 看到画面变黑 / The image turns black
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果 / Expected Result
+      placeholder: 例如：画面应该显示调色后的效果 / e.g. The image should show the graded result.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果 / Actual Result
+      placeholder: 例如：画面全黑，但参数面板正常 / e.g. The image is black while the parameter panel still works.
+    validations:
+      required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 截图 / 录屏 / Screenshots / Screen Recording
+      description: 拖拽图片到此处即可上传。如果是画面问题，截图非常关键。 / Drag and drop images here; screenshots are especially important for visual bugs.
+  - type: textarea
+    id: logs
+    attributes:
+      label: 控制台报错 / Console Errors
+      description: 按 Ctrl+Shift+I 打开 DevTools → Console 标签，复制红色报错。 / Open DevTools with Ctrl+Shift+I, go to Console, and paste red errors.
+      render: shell
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 确认 / Confirmation
+      options:
+        - label: 我已搜索过已有 Issue，确认不是重复问题。 / I searched existing issues and this is not a duplicate.
+          required: true
+        - label: 我已尝试用最新版本复现。 / I reproduced this on the latest version.
+          required: true

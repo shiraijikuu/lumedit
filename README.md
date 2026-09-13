@@ -286,7 +286,7 @@ https://cdn.jsdelivr.net/gh/shiraijikuu/lumedit@main/update.json
 
 | Path / 路径 | Purpose / 用途 |
 |---|---|
-| `.github/workflows/` | CI: typecheck + smoke tests on push/PR / CI：push/PR 自动执行类型检查与冒烟测试 |
+| `.github/` | Issue templates, Discussions config, CI and issue auto-reply / Issue 模板、Discussions 配置、CI 与 Issue 自动回复 |
 | `electron/` | Main process, preload, IPC allowlist, menus, updater, native i18n and userData stores / 主进程、preload、IPC 白名单、菜单、自动更新、原生 i18n 与 userData 存储 |
 | `src/core/render/` | WebGL2 image renderer, stage pipeline, buffers, texture pool and curve LUT baking / WebGL2 渲染器、Stage 管线、缓冲区、纹理池与曲线 LUT 烘焙 |
 | `src/core/image/` | Import, RAW embedded preview extraction, EXIF, Orientation and downsampling / 导入、RAW 内嵌预览提取、EXIF、Orientation 与降采样 |
@@ -300,6 +300,26 @@ https://cdn.jsdelivr.net/gh/shiraijikuu/lumedit@main/update.json
 
 ---
 
+<a id="faq"></a>
+<a name="faq"></a>
+
+## FAQ / 常见问题
+
+**EN**
+- **Does LumEdit upload my photos?** No. All analysis, grading, masks, watermarking and export run locally. No account is required.
+- **How does RAW support work?** LumEdit extracts the embedded full-size JPEG preview from supported RAW files instead of running a de-Bayer conversion. This keeps the app fast and dependency-free; for RAW files without an embedded preview, use a converter first.
+- **Why is 16-bit PNG export larger?** 16-bit PNG is lossless and preserves more tonal precision, so files are naturally larger than JPG or WebP. Use JPG or WebP when a smaller file matters more.
+- **Where are presets and projects stored?** Presets and app settings live in Electron userData. Projects are saved as `.lightedit` files and can be reopened later.
+- **Does the portable build auto-update?** No. Use the installer if you want in-app updates; the portable build is intended for manual use from a USB drive.
+- **Where should I ask a question?** Use Discussions for usage questions and the Issue forms for reproducible bugs or feature requests.
+
+**中文**
+- **LumEdit 会上传照片吗？** 不会。分析、调色、蒙版、水印与导出全部在本地完成，无需注册账号。
+- **RAW 支持是如何实现的？** LumEdit 提取支持的 RAW 文件内嵌全尺寸 JPEG 预览，而不是执行解拜耳转换。这样可以保持启动和编辑速度、避免额外依赖；如果 RAW 没有内嵌预览，请先用转换工具导出。
+- **为什么 16-bit PNG 导出更大？** 16-bit PNG 是无损格式，保留更多影调精度，因此体积通常大于 JPG 或 WebP。对体积更敏感时可选择 JPG 或 WebP。
+- **预设和工程文件存在哪里？** 预设与应用设置存放在 Electron userData；工程保存为 `.lightedit` 文件，可随时重新打开。
+- **便携版会自动更新吗？** 不会。需要应用内自动更新请使用安装版；便携版主要面向 U 盘和手动更新场景。
+- **有使用问题去哪里问？** 使用问题请到 Discussions；可复现的 Bug 或功能建议请使用 Issue 表单。
 ## Versioning / 版本规范
 
 **EN:** LumEdit follows strict semantic versioning `x.y.z`.

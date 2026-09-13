@@ -1,0 +1,57 @@
+name: 功能建议 / Feature Request
+description: 提出一个新功能或改进建议 / Suggest a new feature or improvement
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢建议。提交前请先搜索已有 Issue，避免重复。
+        请尽量说明「你为什么需要它」，而不只是「我想要什么」。
+
+        Thank you for your suggestion. Please search existing issues first, and explain why you need it rather than only what you want.
+  - type: dropdown
+    id: category
+    attributes:
+      label: 功能分类 / Category
+      options:
+        - 调色（曲线 / HSL / 分级 / LUT）/ Color (Curves / HSL / Grading / LUT)
+        - 蒙版（画笔 / 亮度 / 颜色范围）/ Masks (Brush / Luminance / Color Range)
+        - 几何（裁剪 / 旋转 / 透视 / 镜头校正）/ Geometry (Crop / Rotate / Perspective / Lens Correction)
+        - 导出（格式 / 批量 / EXIF）/ Export (Format / Batch / EXIF)
+        - 性能（速度 / 内存 / 显存）/ Performance (Speed / Memory / VRAM)
+        - 界面 / 交互 / UI / Interaction
+        - 其他 / Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你想解决的问题 / Problem to Solve
+      description: 描述你遇到的具体场景，而不是只说想要某个功能。 / Describe the real scenario, not only the feature name.
+      placeholder: |
+        例如 / e.g.：我在处理漫展返图时，需要批量给照片加同一个水印，
+        但现在的导出流程要一张一张来，很慢。
+        When processing event photos, I need the same watermark on many images,
+        but the current export flow is slow because it handles one image at a time.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: 你希望怎么做 / Proposed Solution
+      description: 描述你设想的解决方案，不需要考虑技术实现。 / Describe the desired result; implementation details are optional.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 你目前是怎么解决的 / Current Workaround
+      description: 有没有用其他工具或方法绕过去？ / Are you using another tool or workaround?
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 确认 / Confirmation
+      options:
+        - label: 我已搜索过已有 Issue，确认不是重复建议。 / I searched existing issues and this is not a duplicate.
+          required: true
