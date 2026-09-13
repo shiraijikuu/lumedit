@@ -117,19 +117,6 @@ function readPixel(
   return px;
 }
 
-/** 转储纹理一行（R,B 交替）用于诊断 */
-function dumpRowOf(gl: WebGL2RenderingContext, tex: WebGLTexture): string {
-  const fb = gl.createFramebuffer()!;
-  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
-  const row = new Uint8Array(16 * 4);
-  gl.readPixels(0, 8, 16, 1, gl.RGBA, gl.UNSIGNED_BYTE, row);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-  gl.deleteFramebuffer(fb);
-  const vals: string[] = [];
-  for (let x = 0; x < 16; x++) vals.push(row[x * 4] + ',' + row[x * 4 + 2]);
-  return vals.join(' | ');
-}
 
 // ---------- 1. cube 解析 ----------
 function testCubeParser(): void {
@@ -1271,7 +1258,7 @@ async function testAdvancedColor(): Promise<void> {
       };
       const inStroke = readAt(6, 8);
       const outside = readAt(14, 2);
-        // TODO(0.5.0): 笔画内应为 ~239（线性光 +2EV），当前 0 —— 画笔光柵化待排查（见 HANDOFF）
+        // TODO(0.5.0): 笔画内应为 ~239（线性光 +2EV），当前 0 —— 画笔光柵化待排查（见 HANDOFF-v0.5.0-masks.md）
     ok('画笔蒙版：笔画内（诊断，暂不断言）', inStroke[0] >= 0, `in=${inStroke[0]}`);
       ok('画笔蒙版：笔画外不受影响', outside[0] < 140, `out=${outside[0]}`);
       stage.destroy();

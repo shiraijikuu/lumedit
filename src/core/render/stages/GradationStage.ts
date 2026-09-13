@@ -254,11 +254,11 @@ export class GradationStage implements RenderStage {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.brushVbo);
     const bl = this.brushProg!;
     const layout: Array<[string, number, number]> = [
+      ['aPos', 2, 0],
       ['aA', 2, 8],
       ['aB', 2, 16],
-      ['aPos', 2, 24],
-      ['aRad', 1, 32],
-      ['aHard', 1, 36],
+      ['aRad', 1, 24],
+      ['aHard', 1, 28],
     ];
     for (const [name, size, offset] of layout) {
       const loc = bl.attrib(name);
