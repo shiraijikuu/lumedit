@@ -30,7 +30,7 @@ import {
   detectRawKind,
   extractLargestEmbeddedJpeg,
 } from '../../src/core/image/rawExtractor';
-import { applyOrientation, buildCwmMeta, decodeForPreview } from '../../src/core/image/imageLoader';
+import { applyOrientation, buildCwmMeta, decodeAnyImageBitmap, decodeForPreview } from '../../src/core/image/imageLoader';
 import { evalCurve, bakeCurveLut, isIdentityCurve, CURVE_LUT_SIZE } from '../../src/core/render/curveLut';
 import { CurveStage } from '../../src/core/render/stages/CurveStage';
 import { HslStage } from '../../src/core/render/stages/HslStage';
@@ -39,7 +39,9 @@ import { LogWheelsStage } from '../../src/core/render/stages/LogWheelsStage';
 import { EffectsStage } from '../../src/core/render/stages/EffectsStage';
 import { ToneRollStage } from '../../src/core/render/stages/ToneRollStage';
 import { QualifierStage } from '../../src/core/render/stages/QualifierStage';
-import { ensureParams, cloneParams, linearCurve, HSL_HUES, createGradation, normalizeGradation, MAX_GRADATIONS, type GradationItem } from '../../src/types/EditParams';
+import { BlendStage } from '../../src/core/render/stages/BlendStage';
+import { createEditStageBundle } from '../../src/core/render/editStages';
+import { ensureParams, cloneParams, linearCurve, HSL_HUES, createGradation, normalizeGradation, MAX_GRADATIONS, createBlendLayer, normalizeBlendLayer, BLEND_MODES, MAX_BLEND_LAYERS, type GradationItem } from '../../src/types/EditParams';
 import { encodePng16, encodePng16Async, rgba8ToRgb16TopDown, rgbaFloatToRgb16TopDown } from '../../src/core/export/png16';
 import { analyzeScopes, rgbToCbCr, vectorscopeTargets } from '../../src/core/scope/scopes';
 import zhDict from '../../src/i18n/locales/zh-CN';
@@ -91,6 +93,41 @@ async function solidBitmap(
   return createImageBitmap(c);
 }
 
+async function alphaBitmap(
+  w: number,
+  h: number,
+  rgba: [number, number, number, number]
+): Promise<ImageBitmap> {
+  const c = new OffscreenCanvas(w, h);
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = `rgba(${rgba.map((v) => Math.round(v * 255)).join(',')})`;
+  ctx.fillRect(0, 0, w, h);
+  return createImageBitmap(c);
+}
+
+async function quadBitmap(
+  w: number,
+  h: number,
+  topLeft: [number, number, number],
+  topRight: [number, number, number],
+  bottomLeft: [number, number, number],
+  bottomRight: [number, number, number]
+): Promise<ImageBitmap> {
+  const c = new OffscreenCanvas(w, h);
+  const ctx = c.getContext('2d')!;
+  const fill = (rgb: [number, number, number], x: number, y: number, qw: number, qh: number) => {
+    ctx.fillStyle = `rgb(${rgb.map((v) => Math.round(v * 255)).join(',')})`;
+    ctx.fillRect(x, y, qw, qh);
+  };
+  const hw = Math.ceil(w / 2);
+  const hh = Math.ceil(h / 2);
+  fill(topLeft, 0, 0, hw, hh);
+  fill(topRight, hw, 0, w - hw, hh);
+  fill(bottomLeft, 0, hh, hw, h - hh);
+  fill(bottomRight, hw, hh, w - hw, h - hh);
+  return createImageBitmap(c);
+}
+
 function uploadTexture(gl: WebGL2RenderingContext, bmp: ImageBitmap): WebGLTexture {
   const tex = gl.createTexture()!;
   gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -104,21 +141,32 @@ function uploadTexture(gl: WebGL2RenderingContext, bmp: ImageBitmap): WebGLTextu
   return tex;
 }
 
-function readPixel(
+function readPixelAt(
   gl: WebGL2RenderingContext,
   tex: WebGLTexture,
-  w: number,
-  h: number
+  _w: number,
+  _h: number,
+  x: number,
+  y: number
 ): Uint8Array {
   const fbo = gl.createFramebuffer()!;
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
   assert(gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE, 'FBO 不完整');
   const px = new Uint8Array(4);
-  gl.readPixels(Math.floor(w / 2), Math.floor(h / 2), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.deleteFramebuffer(fbo);
   return px;
+}
+
+function readPixel(
+  gl: WebGL2RenderingContext,
+  tex: WebGLTexture,
+  w: number,
+  h: number
+): Uint8Array {
+  return readPixelAt(gl, tex, w, h, Math.floor(w / 2), Math.floor(h / 2));
 }
 
 
@@ -477,6 +525,25 @@ function testSecurityPolicy(): void {
   ok('工程引用授权：params.lut.path', p.isReadAllowed('D:\\luts\\look.cube'));
   ok('工程引用授权：externalLut.path', p.isReadAllowed('D:/luts/other.cube'));
   ok('工程引用不扩大到同目录其他文件', !p.isReadAllowed('D:/luts/evil.cube'));
+
+  // 多重叠加层按文件路径引用，工程恢复必须授权（否则叠加图读不到、图层空转、调参无效）
+  p.grantProjectReferences(
+    JSON.stringify({
+      params: {
+        blend: {
+          enabled: true,
+          layers: [
+            { id: 'b1', imagePath: 'E:/overlay/a.png' },
+            { id: 'b2', imagePath: 'E:/overlay/b.png' },
+          ],
+        },
+      },
+    })
+  );
+  ok('工程引用授权：叠加层1', p.isReadAllowed('E:\\overlay\\a.png'));
+  ok('工程引用授权：叠加层2', p.isReadAllowed('E:/overlay/b.png'));
+  ok('叠加引用不扩大到同目录其他文件', !p.isReadAllowed('E:/overlay/c.png'));
+
   let badJson = false;
   try {
     p.grantProjectReferences('not json');
@@ -567,6 +634,26 @@ async function testRaw(): Promise<void> {
   ok('RAW 预览解码：取最大内嵌图尺寸 320', dec.bitmap.width === 320 && dec.bitmap.height === 320,
     `got ${dec.bitmap.width}x${dec.bitmap.height}`);
   dec.bitmap.close();
+
+  // 多重叠加图层共用 decodeAnyImageBitmap：RAW（提取内嵌 JPEG）与常规 JPEG 都必须能解码
+  // 回归：叠加素材选 RAW 时原生 createImageBitmap 直接失败、图层永远不显示（RAW 不能多重叠加）
+  const layerRaw = await decodeAnyImageBitmap(container, 'layer.ARW');
+  ok('叠加层 RAW：decodeAnyImageBitmap 解出内嵌位图 320', layerRaw.width === 320 && layerRaw.height === 320,
+    `got ${layerRaw.width}x${layerRaw.height}`);
+  layerRaw.close();
+  const jpegBytes = await noiseJpeg(64);
+  const layerJpg = await decodeAnyImageBitmap(
+    jpegBytes.buffer.slice(jpegBytes.byteOffset, jpegBytes.byteOffset + jpegBytes.byteLength),
+    'layer.jpg'
+  );
+  ok('叠加层 JPG：decodeAnyImageBitmap 常规格式正常解码 64', layerJpg.width === 64 && layerJpg.height === 64);
+  layerJpg.close();
+  let rawLayerThrew = false;
+  try {
+    // 无内嵌 JPEG 的纯噪声容器：既非常规图也提不出 RAW 预览，应明确抛错而非静默空纹理
+    await decodeAnyImageBitmap(new Uint8Array(8192).fill(0x11), 'broken.ARW');
+  } catch { rawLayerThrew = true; }
+  ok('叠加层损坏 RAW：解码失败时抛错（调用方可跳过并提示）', rawLayerThrew);
 }
 
 // ---------- 9. 色调曲线 LUT ----------
@@ -673,6 +760,299 @@ async function testNewStagesNeutral(): Promise<void> {
   logStage.destroy();
   gl.deleteTexture(input);
   bmp.close();
+}
+
+// ---------- 8b. 多重图片叠加 BlendStage ----------
+async function testBlend(): Promise<void> {
+  logs.push('[blend stage / params / assembly]');
+  const gl = createGL();
+  const W = 64;
+  const ctx: RenderContext = { gl, width: W, height: W };
+
+  // 中性 / 直通：未启用、空图层、有层无纹理都必须原样返回 input
+  const baseBmp = await solidBitmap(W, W, [0.5, 0.5, 0.5]);
+  const input = uploadTexture(gl, baseBmp);
+  const stage0 = new BlendStage();
+  ok('blend 未启用直通 input', stage0.execute(input, params(), ctx) === input);
+  const pOn = params();
+  pOn.blend = { enabled: true, layers: [], position: 'after-lut' };
+  ok('blend 启用但无图层直通', stage0.execute(input, pOn, ctx) === input);
+  const layerNoTex = createBlendLayer('x.png', 'x');
+  pOn.blend.layers.push(layerNoTex);
+  ok('blend 图层未喂纹理时直通（不黑屏）', stage0.execute(input, pOn, ctx) === input);
+  stage0.destroy();
+
+  // 透明底图 + 不透明叠加：必须得到不透明结果，而不是继续保留 alpha=0。
+  const transparentBase = await alphaBitmap(W, W, [0, 0, 0, 0]);
+  const transparentInput = uploadTexture(gl, transparentBase);
+  const transparentLayer = await solidBitmap(W, W, [1, 0, 0]);
+  const transparentStage = new BlendStage();
+  const pTransparent = params();
+  const transparentLayerParam = createBlendLayer('transparent.png', 'transparent');
+  pTransparent.blend = { enabled: true, layers: [transparentLayerParam], position: 'after-lut' };
+  transparentStage.setLayerBitmap(transparentLayerParam.id, gl, transparentLayer);
+  const transparentOut = transparentStage.execute(transparentInput, pTransparent, ctx);
+  const pxTransparent = readPixel(gl, transparentOut, W, W);
+  ok(
+    '透明底图上的不透明叠加保留 alpha=255 且颜色正确',
+    pxTransparent[0] > 245 && pxTransparent[1] < 12 && pxTransparent[3] > 245,
+    `${pxTransparent[0]},${pxTransparent[1]},${pxTransparent[3]}`
+  );
+  if (transparentOut !== transparentInput) gl.deleteTexture(transparentOut);
+  transparentStage.destroy();
+  gl.deleteTexture(transparentInput);
+  transparentBase.close();
+  transparentLayer.close();
+
+  // 坐标验证：UI 的 y=0 在顶部，BlendStage 必须转换为 WebGL 左下原点。
+  const ySource = await quadBitmap(
+    W, W,
+    [1, 0, 0], [1, 0, 0],
+    [0, 0, 1], [0, 0, 1]
+  );
+  const yStage = new BlendStage();
+  const yLayer = createBlendLayer('y.png', 'y');
+  yLayer.x = 0.5;
+  yLayer.y = 0.2;
+  yLayer.scale = 0.4;
+  const pY = params();
+  pY.blend = { enabled: true, layers: [yLayer], position: 'after-lut' };
+  yStage.setLayerBitmap(yLayer.id, gl, ySource);
+  const yOut = yStage.execute(input, pY, ctx);
+  const yTop = readPixelAt(gl, yOut, W, W, 32, 54);
+  const yBottom = readPixelAt(gl, yOut, W, W, 32, 10);
+  ok('UI y=0.2 靠近顶部（顶部为红，底部回到底图）', yTop[0] > 245 && yTop[2] < 12 && Math.abs(yBottom[0] - 128) <= 4, `top=${yTop[0]},${yTop[1]},${yTop[2]} bottom=${yBottom[0]}`);
+  if (yOut !== input) gl.deleteTexture(yOut);
+  yStage.destroy();
+  ySource.close();
+
+  // 旋转验证：rotation 正 90° 应为视觉顺时针，左上红到右上、右下蓝到左下。
+  const rotSource = await quadBitmap(
+    W, W,
+    [1, 0, 0], [0, 0, 0],
+    [0, 0, 0], [0, 0, 1]
+  );
+  const rotStage = new BlendStage();
+  const rotLayer = createBlendLayer('rot.png', 'rot');
+  rotLayer.scale = 0.8;
+  rotLayer.rotation = 90;
+  const pRot = params();
+  pRot.blend = { enabled: true, layers: [rotLayer], position: 'after-lut' };
+  rotStage.setLayerBitmap(rotLayer.id, gl, rotSource);
+  const rotOut = rotStage.execute(input, pRot, ctx);
+  const rotTopRight = readPixelAt(gl, rotOut, W, W, 48, 48);
+  const rotBottomLeft = readPixelAt(gl, rotOut, W, W, 16, 16);
+  ok('rotation=90 是视觉顺时针（左上红到右上，右下蓝到左下）', rotTopRight[0] > 245 && rotBottomLeft[2] > 245, `tr=${rotTopRight[0]},${rotTopRight[1]},${rotTopRight[2]} bl=${rotBottomLeft[0]},${rotBottomLeft[1]},${rotBottomLeft[2]}`);
+  if (rotOut !== input) gl.deleteTexture(rotOut);
+  rotStage.destroy();
+  rotSource.close();
+
+  // 准备一个纯色叠加层位图
+  const redBmp = await solidBitmap(W, W, [1, 0, 0]);
+  const grayBmp = await solidBitmap(W, W, [0.8, 0.8, 0.8]);
+
+  const runOne = async (
+    layerColor: ImageBitmap,
+    patch: Partial<ReturnType<typeof createBlendLayer>>,
+    modeCount = 1
+  ): Promise<Uint8Array> => {
+    const stage = new BlendStage();
+    const p = params();
+    const layers = [];
+    for (let i = 0; i < modeCount; i++) {
+      const l = createBlendLayer(`l${i}.png`, `l${i}`);
+      Object.assign(l, patch);
+      layers.push(l);
+    }
+    p.blend = { enabled: true, layers, position: 'after-lut' };
+    for (const l of layers) stage.setLayerBitmap(l.id, gl, layerColor);
+    const out = stage.execute(input, p, ctx);
+    const px = readPixel(gl, out, W, W);
+    if (out !== input) gl.deleteTexture(out);
+    stage.destroy();
+    return px;
+  };
+
+  // normal 不透明红覆盖中灰 → 红
+  const normal = await runOne(redBmp, { mode: 'normal', opacity: 1 });
+  ok('normal 不透明叠加=图层色', normal[0] > 245 && normal[1] < 12 && normal[2] < 12, `${normal[0]},${normal[1]},${normal[2]}`);
+
+  // normal + opacity 0.5：中灰与红各半 → (191,64,64)
+  const half = await runOne(redBmp, { mode: 'normal', opacity: 0.5 });
+  ok('normal opacity0.5 线性混合', Math.abs(half[0] - 191) <= 4 && Math.abs(half[1] - 64) <= 4 && Math.abs(half[2] - 64) <= 4, `${half[0]},${half[1]},${half[2]}`);
+
+  // multiply：0.5 灰 × 0.8 灰 = 0.4(102)
+  const mul = await runOne(grayBmp, { mode: 'multiply', opacity: 1 });
+  ok('multiply 0.5×0.8≈0.4', Math.abs(mul[0] - 102) <= 4 && Math.abs(mul[1] - 102) <= 4 && Math.abs(mul[2] - 102) <= 4, `${mul[0]}`);
+
+  // screen：1-(1-.5)(1-.5)=0.75(191)
+  const scr = await runOne(grayBmp, { mode: 'screen', opacity: 1 });
+  ok('screen 0.5,0.8≈0.9(230)', Math.abs(scr[0] - 230) <= 4, `${scr[0]}`);
+
+  // 隐藏层跳过：visible=false → 直通 input
+  const stageHide = new BlendStage();
+  const pHide = params();
+  const lh = createBlendLayer('h.png', 'h');
+  lh.visible = false;
+  pHide.blend = { enabled: true, layers: [lh], position: 'after-lut' };
+  stageHide.setLayerBitmap(lh.id, gl, redBmp);
+  ok('blend 隐藏图层直通', stageHide.execute(input, pHide, ctx) === input);
+  stageHide.destroy();
+
+  // 变换越界：图层缩到 0.2 且中心挪到角落，画面中心回到底色
+  const outside = await runOne(redBmp, { mode: 'normal', opacity: 1, scale: 0.2, x: 0, y: 0 });
+  ok('图层越界区域回到底色', Math.abs(outside[0] - 128) <= 4 && Math.abs(outside[1] - 128) <= 4, `${outside[0]},${outside[1]}`);
+
+  // 多图层串联不报错且产出新纹理
+  const stageMulti = new BlendStage();
+  const pMulti = params();
+  const m1 = createBlendLayer('a.png', 'a');
+  const m2 = createBlendLayer('b.png', 'b');
+  pMulti.blend = { enabled: true, layers: [m1, m2], position: 'before-lut' };
+  stageMulti.setLayerBitmap(m1.id, gl, grayBmp);
+  stageMulti.setLayerBitmap(m2.id, gl, redBmp);
+  const outMulti = stageMulti.execute(input, pMulti, ctx);
+  ok('多图层串联产出新纹理', outMulti !== input && !!outMulti);
+  gl.deleteTexture(outMulti);
+  stageMulti.destroy();
+
+  redBmp.close();
+  grayBmp.close();
+  baseBmp.close();
+  gl.deleteTexture(input);
+
+  // ---- 参数模型 ----
+  const nl = normalizeBlendLayer({ mode: 'bogus' as never, opacity: 3, x: 99 }, 2);
+  ok('normalizeBlendLayer 非法 mode 回 normal', nl.mode === 'normal');
+  ok('normalizeBlendLayer 数值 clamp', nl.opacity === 1 && nl.x === 1.5 && nl.id === 'b3');
+  ok('normalizeBlendLayer 缺省 visible=true', nl.visible === true);
+  const cl = createBlendLayer('p/x.png', 'x');
+  ok('createBlendLayer 默认居中全尺寸 normal', cl.x === 0.5 && cl.y === 0.5 && cl.scale === 1 && cl.mode === 'normal');
+  ok('BLEND_MODES 共 10 种', BLEND_MODES.length === 10);
+  ok('叠加层上限 = 8', MAX_BLEND_LAYERS === 8);
+
+  // ensure / clone 保留 blend 且深拷贝不共享
+  const pe = params();
+  pe.blend = { enabled: true, position: 'before-lut', layers: [createBlendLayer('a.png', 'a')] };
+  const ens = ensureParams(pe);
+  ok('ensureParams 保留 blend', !!ens.blend && ens.blend!.position === 'before-lut' && ens.blend!.layers.length === 1);
+  const c1 = cloneParams(ens);
+  c1.blend!.layers.push(createBlendLayer('b.png', 'b'));
+  ok('cloneParams 深拷贝 layers 不共享', ens.blend!.layers.length === 1 && c1.blend!.layers.length === 2);
+
+  // ---- 管线装配：blend 相对 LUT 的位置 ----
+  const bundle = createEditStageBundle();
+  const nameSeq = (arr: { name: string }[]) => arr.map((s) => s.name);
+  const after = nameSeq(bundle.orderedFor('after-lut'));
+  const before = nameSeq(bundle.orderedFor('before-lut'));
+  ok('after-lut：blend 在 lut 之后', after.indexOf('blend') > after.indexOf('lut'));
+  ok('before-lut：blend 在 lut 之前', before.indexOf('blend') < before.indexOf('lut'));
+  ok('after-lut：blend 在 tonemap 之后（真正最后合成）', after.indexOf('blend') > after.indexOf('tonemap'));
+  ok('默认 ordered 等价 after-lut', nameSeq(bundle.ordered).join() === after.join());
+  ok('blend 在管线中只出现一次', after.filter((n) => n === 'blend').length === 1);
+  bundle.dispose();
+
+  // ---- 工程文件往返保留 blend ----
+  const projText = serializeProject({
+    sourcePath: null,
+    sourceName: 'x.jpg',
+    params: ens,
+    externalLut: null,
+  });
+  const parsed = parseProject(projText);
+  ok('工程序列化往返保留 blend 图层', parsed.params.blend?.layers.length === 1 && parsed.params.blend?.enabled === true);
+
+  // 同一 Stage 实例连续改参（模拟真机拖滑块：每帧从 input 重跑，参数必须实时生效、不得缓存旧值）
+  const liveBase = await solidBitmap(W, W, [0.5, 0.5, 0.5]);
+  const liveInput = uploadTexture(gl, liveBase);
+  const liveLayer = await solidBitmap(W, W, [1, 0, 0]);
+  const live = new BlendStage();
+  const lid = 'live';
+  live.setLayerBitmap(lid, gl, liveLayer);
+  const makeLive = (patch: Partial<ReturnType<typeof createBlendLayer>>): EditParams => {
+    const pp = params();
+    const l = createBlendLayer('r.png', lid);
+    l.id = lid;
+    Object.assign(l, patch);
+    pp.blend = { enabled: true, layers: [l], position: 'after-lut' };
+    return pp;
+  };
+  const sampleLive = (pp: EditParams): Uint8Array => {
+    const out = live.execute(liveInput, pp, ctx);
+    const px = readPixel(gl, out, W, W);
+    if (out !== liveInput) gl.deleteTexture(out);
+    return px;
+  };
+  const pFull = makeLive({ mode: 'normal', opacity: 1 });
+  const pZero = makeLive({ mode: 'normal', opacity: 0 });
+  const pBack = makeLive({ mode: 'normal', opacity: 1 });
+  const pxFull = sampleLive(pFull);
+  const pxZero = sampleLive(pZero);
+  const pxBack = sampleLive(pBack);
+  ok('同实例 opacity=1 显示图层', pxFull[0] > 245 && pxFull[1] < 12, `${pxFull[0]},${pxFull[1]}`);
+  ok('同实例改 opacity=0 实时回到底色（无缓存）', Math.abs(pxZero[0] - 128) <= 4 && Math.abs(pxZero[1] - 128) <= 4, `${pxZero[0]},${pxZero[1]}`);
+  ok('同实例 opacity 改回 1 再次生效', pxBack[0] > 245 && pxBack[1] < 12, `${pxBack[0]},${pxBack[1]}`);
+  // 改 scale 缩小到中心外：画面中心回底色
+  const pSmall = makeLive({ scale: 0.02, x: 0, y: 0 });
+  const pxSmall = sampleLive(pSmall);
+  ok('同实例改 scale 实时生效（越界回底）', Math.abs(pxSmall[0] - 128) <= 4, `${pxSmall[0]}`);
+
+  // 首次 execute 之前（内部 this.gl 尚为 null）就替换同 id 位图：必须用传入 gl 释放旧纹理并显示新位图
+  const replaceStage = new BlendStage();
+  const repRed = await solidBitmap(W, W, [1, 0, 0]);
+  const repGreen = await solidBitmap(W, W, [0, 1, 0]);
+  replaceStage.setLayerBitmap(lid, gl, repRed);
+  replaceStage.setLayerBitmap(lid, gl, repGreen); // 立即替换，尚未 execute
+  const outRep = replaceStage.execute(liveInput, makeLive({ mode: 'normal', opacity: 1 }), ctx);
+  const pxRep = readPixel(gl, outRep, W, W);
+  if (outRep !== liveInput) gl.deleteTexture(outRep);
+  ok('execute 前替换同 id 纹理最终显示新纹理(绿)', pxRep[1] > 245 && pxRep[0] < 12, `${pxRep[0]},${pxRep[1]}`);
+  replaceStage.destroy();
+  repRed.close();
+  repGreen.close();
+
+  // 两层叠放：换序后新顶层生效，且把当前顶层调透明应露出下层（对应“顶层/底层调参都要有效”）
+  const orderStage = new BlendStage();
+  const ordRed = await solidBitmap(W, W, [1, 0, 0]);
+  const ordBlue = await solidBitmap(W, W, [0, 0.4, 1]);
+  orderStage.setLayerBitmap('a', gl, ordRed);
+  orderStage.setLayerBitmap('b', gl, ordBlue);
+  const mkTwo = (ids: string[]): EditParams => {
+    const pp = params();
+    pp.blend = {
+      enabled: true,
+      position: 'after-lut',
+      layers: ids.map((id) => {
+        const l = createBlendLayer('x.png', id);
+        l.id = id;
+        l.scale = 0.9;
+        return l;
+      }),
+    };
+    return pp;
+  };
+  const o1 = orderStage.execute(liveInput, mkTwo(['a', 'b']), ctx); // b 蓝在顶
+  const pxO1 = readPixel(gl, o1, W, W);
+  if (o1 !== liveInput) gl.deleteTexture(o1);
+  const ppARed = mkTwo(['b', 'a']); // 换序：a 红在顶
+  const o2 = orderStage.execute(liveInput, ppARed, ctx);
+  const pxO2 = readPixel(gl, o2, W, W);
+  if (o2 !== liveInput) gl.deleteTexture(o2);
+  ppARed.blend!.layers.find((l) => l.id === 'a')!.opacity = 0; // 顶层红透明
+  const o3 = orderStage.execute(liveInput, ppARed, ctx);
+  const pxO3 = readPixel(gl, o3, W, W);
+  if (o3 !== liveInput) gl.deleteTexture(o3);
+  ok('两层：数组末层在顶(蓝)', pxO1[2] > 200 && pxO1[0] < 60, `${pxO1[0]},${pxO1[2]}`);
+  ok('换序后新顶层生效(红)', pxO2[0] > 245 && pxO2[2] < 60, `${pxO2[0]},${pxO2[2]}`);
+  ok('换序后顶层透明露出下层(蓝)', pxO3[2] > 200 && pxO3[0] < 60, `${pxO3[0]},${pxO3[2]}`);
+  orderStage.destroy();
+  ordRed.close();
+  ordBlue.close();
+
+  live.destroy();
+  gl.deleteTexture(liveInput);
+  liveBase.close();
+  liveLayer.close();
 }
 
 // ---------- 9. 纹理池 ----------
@@ -1567,6 +1947,7 @@ async function main(): Promise<void> {
     testEnsureParams();
     testI18nParity();
     await testNewStagesNeutral();
+    await testBlend();
     await testColorEngine();
     await testAdvancedColor();
     await testAutoEnhance();

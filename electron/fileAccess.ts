@@ -45,12 +45,19 @@ function isAbsoluteNormalized(n: string): boolean {
 function projectReferencePaths(obj: unknown): string[] {
   const o = obj as {
     source?: { path?: unknown } | null;
-    params?: { lut?: { path?: unknown } | null } | null;
+    params?: {
+      lut?: { path?: unknown } | null;
+      blend?: { layers?: Array<{ imagePath?: unknown }> } | null;
+    } | null;
     externalLut?: { path?: unknown } | null;
   } | null;
   const out: string[] = [];
   for (const p of [o?.source?.path, o?.params?.lut?.path, o?.externalLut?.path]) {
     if (typeof p === 'string' && p) out.push(p);
+  }
+  // 多重叠加层按文件路径引用，工程恢复时必须一并授权，否则叠加图读不到、图层空转
+  for (const layer of o?.params?.blend?.layers ?? []) {
+    if (layer && typeof layer.imagePath === 'string' && layer.imagePath) out.push(layer.imagePath);
   }
   return out;
 }

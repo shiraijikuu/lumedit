@@ -150,6 +150,46 @@ export async function decodeFull(
   return bitmap;
 }
 
+/**
+ * 把任意图片字节（JPG / PNG / WebP / RAW）解码为 ImageBitmap。
+ * 多重叠加图层在「主线程预览」与「导出 Worker」共用同一实现：常规格式嗅探命中后直接解码，
+ * RAW 提取最大内嵌预览（通常全尺寸）后再解码，保证 RAW 也能作为叠加图层。
+ * 不做 EXIF 解析 / 降采样 / 色彩空间转换——图层只需要像素，方向信任 createImageBitmap 自动定向。
+ */
+export async function decodeAnyImageBitmap(
+  input: ArrayBuffer | Uint8Array,
+  fileName?: string
+): Promise<ImageBitmap> {
+  const buffer: ArrayBuffer =
+    input instanceof Uint8Array
+      ? input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength)
+      : input;
+  const bytes = new Uint8Array(buffer);
+  const resolved = resolveWorkBytes(bytes, fileName);
+  // 嗅探命中常规格式时 resolved.work === bytes，直接复用原缓冲；RAW 时为提取出的内嵌 JPEG 新缓冲
+  const work: ArrayBuffer =
+    resolved.work === bytes
+      ? buffer
+      : resolved.work.buffer.slice(
+          resolved.work.byteOffset,
+          resolved.work.byteOffset + resolved.work.byteLength
+        );
+  let bitmap = await createImageBitmap(new Blob([work]));
+
+  // RAW 内嵌 JPEG 可能缺 Orientation；此时像主图预览一样，用 RAW TIFF 的 Orientation 兜底转正。
+  if (resolved.sourceFormat === 'raw') {
+    const rawExifBuffer = resolved.rawTiff ? toAlignedBuffer(resolved.rawTiff) : buffer;
+    const rawExif = await safeParseExif(rawExifBuffer);
+    const embeddedExif = await safeParseExif(work);
+    const rawOrientation = normalizeOrientation(rawExif?.Orientation);
+    const embeddedOrientation = normalizeOrientation(embeddedExif?.Orientation);
+    if (embeddedOrientation === 1 && rawOrientation !== 1) {
+      bitmap = await applyOrientation(bitmap, rawOrientation);
+    }
+  }
+  return bitmap;
+}
+
 // ---------------- EXIF ----------------
 
 export interface ParsedExif {

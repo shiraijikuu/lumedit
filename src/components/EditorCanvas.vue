@@ -34,9 +34,11 @@
       </div>
 
       <!-- camera-watermark 整图水印层（覆盖在调色结果上，不拦截交互）；
-           重建期间 stale，淡出以露出底层实时调色/LUT 画面 -->
+           只在水印确实启用且有预览图时存在，重建期间 stale 淡出露出底层实时画面。
+           注意：必须用 wmShow（enabled && url），不能只看 url——撤销/重做/加载工程可能
+           让水印关闭却残留旧 url，若仍渲染会以不透明整图永久盖住 GL，表现为“调任何参数都无效” -->
       <img
-        v-else-if="store.wmPreviewUrl"
+        v-else-if="wmShow"
         class="wm-overlay"
         :class="{ stale: store.wmPreviewStale }"
         :src="store.wmPreviewUrl ?? ''"
@@ -139,6 +141,7 @@ import { t } from '@/i18n';
 import { ImageRenderer } from '@/core/render/ImageRenderer';
 import { createEditStageBundle } from '@/core/render/editStages';
 import { PassthroughStage } from '@/core/render/stages/PassthroughStage';
+import { loadLayerBitmap } from '@/core/blend/layerImages';
 import AppLogo from '@/components/ui/AppLogo.vue';
 import type { EditParams } from '@/types/EditParams';
 
@@ -154,6 +157,17 @@ const passthrough = new PassthroughStage();
 // 统一按档位组装编辑管线（几何→影调→曲线→[二档]→LUT），预览/导出同源
 const editBundle = createEditStageBundle();
 const lutStage = editBundle.lut;
+const blendStage = editBundle.blend;
+// 已喂入纹理的叠加图层 id（参数层增删/换图时据此增量同步）
+const fedBlendIds = new Set<string>();
+const fedBlendPaths = new Map<string, string | null>();
+// 每个图层的加载代次与正在加载的路径：参数抖动不会无意义地取消同一个图层加载，换图时旧结果会被丢弃
+const blendLoadGeneration = new Map<string, number>();
+const blendPendingPaths = new Map<string, string | null>();
+// 上下文恢复纪元：避免丢失上下文时未完成的旧加载把纹理上传到失效 GL。
+let blendEpoch = 0;
+// 读取失败的图层 id -> 上次失败时间戳：不永久标记为“已喂”，允许 3s 后自愈重试
+const blendFeedFailAt = new Map<string, number>();
 
 const clipCanvasRef = ref<HTMLCanvasElement | null>(null);
 let clipTimer: number | null = null;
@@ -223,15 +237,103 @@ function refreshStageSize(): void {
 
 function applyStages(): void {
   if (!renderer) return;
-  // 水印不在 WebGL 管线内：camera-watermark 整图在主线程离屏合成后以 overlay 叠加
+  // 水印不在 WebGL 管线内：camera-watermark 整图在主线程离屏合成后以 overlay 叠加；
+  // 多重叠加 blend 在 GL 管线内，按其 position 决定相对 LUT 的位置。
   if (isCrop.value) {
     renderer.setStages([passthrough]);
   } else {
-    renderer.setStages(editBundle.ordered);
+    const pos = store.params.blend?.position ?? 'after-lut';
+    renderer.setStages(editBundle.orderedFor(pos));
   }
   renderer.setParams(store.params);
   feedLut();
+  void feedBlendLayers();
   refreshStageSize();
+}
+
+// 增量同步叠加图层位图到 BlendStage：新增/换图则读文件上传，删除则移除纹理
+async function feedBlendLayers(): Promise<void> {
+  const gl = renderer?.getGLContext();
+  if (!gl) return;
+  const epoch = blendEpoch;
+  const layers = store.params.blend?.layers ?? [];
+  const live = new Set(layers.map((l) => l.id));
+
+  // 移除已删除图层，并用当前上下文释放纹理。
+  for (const id of [...fedBlendIds]) {
+    if (!live.has(id)) {
+      blendStage.removeLayer(id, gl);
+      fedBlendIds.delete(id);
+      fedBlendPaths.delete(id);
+      blendFeedFailAt.delete(id);
+      blendPendingPaths.delete(id);
+      blendLoadGeneration.delete(id);
+    }
+  }
+
+  for (const layer of layers) {
+    if (!layer.imagePath) {
+      if (fedBlendIds.has(layer.id)) {
+        blendStage.removeLayer(layer.id, gl);
+        fedBlendIds.delete(layer.id);
+        fedBlendPaths.delete(layer.id);
+        blendPendingPaths.delete(layer.id);
+        blendLoadGeneration.delete(layer.id);
+      }
+      continue;
+    }
+    // 同一 id 换图时先释放旧纹理，避免新图加载失败时预览继续显示旧图。
+    if (fedBlendIds.has(layer.id) && fedBlendPaths.get(layer.id) !== layer.imagePath) {
+      blendStage.removeLayer(layer.id, gl);
+      fedBlendIds.delete(layer.id);
+      fedBlendPaths.delete(layer.id);
+    }
+    if (fedBlendIds.has(layer.id) && fedBlendPaths.get(layer.id) === layer.imagePath) continue;
+    if (blendPendingPaths.get(layer.id) === layer.imagePath) continue;
+
+    // 失败节流：3s 内不重复读同一坏路径，避免每次参数变化都刷 IPC / 报错。
+    const failAt = blendFeedFailAt.get(layer.id);
+    if (failAt && Date.now() - failAt < 3000) continue;
+
+    const generation = (blendLoadGeneration.get(layer.id) ?? 0) + 1;
+    blendLoadGeneration.set(layer.id, generation);
+    blendPendingPaths.set(layer.id, layer.imagePath);
+    let bmp: ImageBitmap | null = null;
+    try {
+      bmp = await loadLayerBitmap(layer.imagePath);
+      // 同一图层或 GL 上下文的旧加载结果：关闭位图并丢弃，不能让过期协程覆盖新图。
+      if (epoch !== blendEpoch || blendLoadGeneration.get(layer.id) !== generation) {
+        bmp.close();
+        bmp = null;
+        continue;
+      }
+      const still = store.params.blend?.layers.find((l) => l.id === layer.id);
+      if (!still || still.imagePath !== layer.imagePath) {
+        bmp.close();
+        bmp = null;
+        continue;
+      }
+      blendStage.setLayerBitmap(layer.id, gl, bmp);
+      fedBlendIds.add(layer.id);
+      fedBlendPaths.set(layer.id, layer.imagePath);
+      blendFeedFailAt.delete(layer.id);
+      bmp.close();
+      bmp = null;
+      renderer?.setParams(store.params);
+    } catch (err) {
+      if (bmp) {
+        bmp.close();
+        bmp = null;
+      }
+      // 失败绝不能标记为“已喂”；下次参数变化或 3s 后会重试。
+      blendFeedFailAt.set(layer.id, Date.now());
+      console.warn('[blend] 叠加图层加载失败，稍后自动重试:', layer.imagePath, err);
+    } finally {
+      if (blendPendingPaths.get(layer.id) === layer.imagePath) {
+        blendPendingPaths.delete(layer.id);
+      }
+    }
+  }
 }
 
 function feedLut(): void {
@@ -635,6 +737,13 @@ function ensureRenderer(): boolean {
     return false;
   }
   renderer.onRestored(() => {
+    // 上下文丢失时 BlendStage 已释放纹理；清空喂入缓存，恢复后必须重新上传全部图层。
+    blendEpoch += 1;
+    fedBlendIds.clear();
+    fedBlendPaths.clear();
+    blendLoadGeneration.clear();
+    blendPendingPaths.clear();
+    blendFeedFailAt.clear();
     applyStages();
   });
   // 供水印工作室 / 离屏合成获取「调色后无水印」底图
@@ -699,10 +808,20 @@ watch(
   () => {
     renderer?.setParams(store.params);
     refreshStageSize();
+    // 新增叠加图层时增量喂入位图（内部按 id 去重，已喂入则空转）
+    void feedBlendLayers();
     // 调色/几何/LUT 变化后，防抖让 camera-watermark 按新底图重建水印预览
     if (store.params.watermark?.enabled) store.scheduleWmPreview();
   },
   { deep: true }
+);
+
+// 叠加层相对 LUT 的位置变化：重组管线顺序
+watch(
+  () => store.params.blend?.position,
+  () => {
+    if (!isCrop.value) applyStages();
+  }
 );
 
 // 水印整图预览替换时（应用工作室 / 离屏重建完成）刷新舞台比例

@@ -3,7 +3,7 @@
 // 由 exporter.ts 在主线程完成水印合成、最终格式编码与 EXIF 回注。
 import type { EditParams } from '@/types/EditParams';
 import type { ImageMeta } from '../image/imageLoader';
-import { decodeFull } from '../image/imageLoader';
+import { decodeFull, decodeAnyImageBitmap } from '../image/imageLoader';
 import { BlitProgram } from '../render/BlitProgram';
 import { bitmapToTextureSource, detectFloatRenderTarget, createTargetTexture } from '../render/gpuUtils';
 import { runPipeline } from '../render/renderPipeline';
@@ -27,6 +27,8 @@ export interface ExportRequest {
   stripGps: boolean;
   /** 导出缩放（1 = 原始全分辨率，主线程使用） */
   scale: number;
+  /** 多重叠加图层位图缓冲（layerId → 图片字节），主线程按路径读好后传入 */
+  blendBuffers?: Record<string, ArrayBuffer>;
 }
 
 /** Worker 回传的调色后中间位图（无损 PNG） */
@@ -133,8 +135,29 @@ async function renderEditedPng(req: ExportRequest): Promise<{ bytes: Uint8Array;
   // 与预览完全相同的档位管线（几何→影调→曲线→[二档]→LUT）
   const bundle = createEditStageBundle();
   if (req.lut) bundle.lut.setLut(gl, req.lut);
+  // 多重叠加图层：主线程按路径读好的图片字节在此解码上传（与预览同一 BlendStage）
+  if (req.blendBuffers) {
+    for (const [id, buf] of Object.entries(req.blendBuffers)) {
+      if (!buf || buf.byteLength === 0) continue;
+      const layerPath = req.params.blend?.layers.find((layer) => layer.id === id)?.imagePath ?? undefined;
+      let layerBmp: ImageBitmap;
+      try {
+        // 与主线程预览一致：叠加图层也支持 RAW（自动提取内嵌预览），常规格式直接解码
+        layerBmp = await decodeAnyImageBitmap(buf, layerPath);
+      } catch (err) {
+        // 单个可读但损坏 / 不支持的图层不应拖垮整张导出。
+        console.warn('[export] 叠加图层解码失败，已跳过:', layerPath ?? id, err);
+        continue;
+      }
+      try {
+        bundle.blend.setLayerBitmap(id, gl, layerBmp);
+      } finally {
+        layerBmp.close();
+      }
+    }
+  }
   // 水印不在 WebGL 管线内：camera-watermark 在主线程离屏窗口作为最后一步合成
-  const stages = bundle.ordered;
+  const stages = bundle.orderedFor(req.params.blend?.position ?? 'after-lut');
 
   const context: RenderContext = { gl, width: bitmap.width, height: bitmap.height, targetFormat };
   const out = runPipeline(gl, stages, inputTex, req.params, context);

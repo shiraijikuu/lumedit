@@ -1,6 +1,6 @@
 // .lightedit 工程文件：只存参数与源图/LUT/水印图片的路径引用，不内嵌任何图像字节
 import type { EditParams } from '@/types/EditParams';
-import { cloneParams, defaultEditParams } from '@/types/EditParams';
+import { cloneParams, ensureParams } from '@/types/EditParams';
 
 export const PROJECT_EXT = 'lightedit';
 const PROJECT_APP = 'lumedit';
@@ -36,21 +36,16 @@ export function serializeProject(opts: {
 }
 
 function mergeParams(incoming: Partial<EditParams>): EditParams {
-  const params = cloneParams(defaultEditParams);
-  Object.assign(params.geometry, incoming.geometry ?? {});
-  Object.assign(params.adjust, incoming.adjust ?? {});
-  Object.assign(params.lut, incoming.lut ?? {});
-  if (incoming.watermark && incoming.watermark.cwmState && typeof incoming.watermark.cwmState === 'object') {
-    params.watermark = {
-      enabled: !!incoming.watermark.enabled,
-      cwmState: JSON.parse(JSON.stringify(incoming.watermark.cwmState)),
-      cwmMeta:
-        incoming.watermark.cwmMeta && typeof incoming.watermark.cwmMeta === 'object'
-          ? JSON.parse(JSON.stringify(incoming.watermark.cwmMeta))
-          : null,
-    };
+  // 完整保留所有参数组（几何/调色/曲线/HSL/分级/蒙版/LUT/叠加/…），缺组由 ensureParams 补默认；
+  // 仅对水印做合法性清洗（cwmState 必须是对象，否则视为无水印）。
+  const clean: Partial<EditParams> = { ...incoming };
+  if (
+    incoming.watermark &&
+    !(incoming.watermark.cwmState && typeof incoming.watermark.cwmState === 'object')
+  ) {
+    delete clean.watermark;
   }
-  return params;
+  return ensureParams(clean);
 }
 
 export function parseProject(text: string): ProjectFile {

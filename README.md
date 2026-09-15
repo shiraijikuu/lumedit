@@ -33,6 +33,7 @@
 - **One-click Auto Enhance:** local GPU histogram analysis and a rule-based engine adjust exposure, white balance, contrast and saturation. No AI model, no upload; target analysis time is under 100 ms, with one-click undo or reset.
 - **Advanced color:** exposure, brightness, contrast, highlights, shadows, whites, blacks, temperature, tint, clarity, dehaze, vibrance and saturation; four-channel RGB tone curves with a live histogram; 8-band HSL; shadow/midtone/highlight color grading; Log wheels with Lift / Gamma / Gain; vignette, grain, sharpen and noise reduction.
 - **Local masks:** linear, radial, luminance range, color range and brush masks; up to 8 stacked masks with union, intersection and subtract composition for targeted secondary grading.
+- **Blend layers:** stack up to 8 external JPG / PNG / WebP / RAW images as textures, light leaks, frames or effects; 10 blend modes plus opacity, scale, rotation, position and flip controls. Place the stack before LUT to participate in grading, or after all output stages to keep the layer colors untouched.
 - **Presets:** save the complete look (tone, curves, HSL, grading, effects and LUT strength) as a named preset, apply it in one click, and reuse it across sessions from userData.
 - **LUT workflow:** 19 built-in `.cube` LUTs across six categories, external `.cube` import, intensity control, a persistent “My LUTs” library, and GPU-baked export of the current grade as a shareable `.cube`.
 - **White balance picker:** click a neutral gray area to estimate temperature and tint automatically.
@@ -51,6 +52,7 @@
 - **一键自动优化**：本地 GPU 直方图分析 + 规则引擎，自动校正曝光、白平衡、对比度与饱和度；不依赖 AI、不上传照片，分析目标 < 100ms，可一键撤销或重置。
 - **深化调色**：曝光、亮度、对比度、高光、阴影、白色、黑色、色温、色调、清晰度、去朦胧、饱和度、自然饱和；RGB 四通道曲线 + 实时直方图；8 色相 HSL；阴影 / 中间调 / 高光颜色分级；Log 色轮 Lift / Gamma / Gain；晕影、颗粒、锐化与降噪。
 - **局部蒙版**：线性、径向、亮度范围、颜色范围和画笔蒙版；最多 8 个叠加，支持并集 / 交集 / 差集组合，适合“区域内只调红色”等二级调色。
+- **多重叠加（Blend）**：最多 8 张 JPG / PNG / WebP / RAW 外部图片作为纹理、漏光、相框或光效图层；支持 10 种混合模式、不透明度、缩放、旋转、位置与翻转。可放在 LUT 之前参与调色，或放在全部输出阶段之后保持图层原色。
 - **调色预设**：将影调、曲线、HSL、分级、效果与 LUT 强度保存为命名预设，一键应用，存入 userData 并可跨会话复用。
 - **LUT 工作流**：内置 6 类共 19 款 `.cube`，支持外部 `.cube` 导入、强度控制、持久化「我的 LUT」库，并可将当前曲线 / HSL / 分级 GPU 烘焙导出为 `.cube` 分享。
 - **白平衡吸管**：点取画面中的中性灰区域，自动推算色温与色调。
@@ -138,7 +140,10 @@ Source / RAW embedded preview
 → Qualifier
 → Gradation (local masks)
 → Effects
+→ Blend (before LUT, optional)
 → LUT
+→ Tone roll / Soft Clip
+→ Blend (after LUT, optional)
 → Watermark (offscreen composite)
 → Output
 ```
@@ -157,7 +162,10 @@ Source / RAW embedded preview
 → Qualifier 取色限定器
 → Gradation 局部蒙版
 → Effects 效果
+→ Blend 叠加（LUT 前，可选）
 → LUT
+→ Tone roll 输出滚降
+→ Blend 叠加（LUT 后，可选）
 → Watermark 水印离屏合成
 → Output 输出
 ```
@@ -191,9 +199,9 @@ npm run smoke      # Offscreen Electron smoke tests / 离屏 Electron 冒烟测�
 
 ### Smoke Tests / 冒烟测试
 
-**EN:** The smoke suite runs in hidden Electron windows with SwiftShader and covers `.cube` parsing and DoS limits, the complete GPU pipeline, RAW extension/signature detection, embedded JPEG extraction, Orientation 8, Auto Enhance, mask composition and brush pixels, PNG16 orientation/compression, EXIF rewrite and three-container injection, undo history, project serialization, presets, LUT baking, i18n key alignment, update URL allowlisting and texture pooling. Current result: 191 passed, 0 failed.
+**EN:** The smoke suite runs in hidden Electron windows with SwiftShader and covers `.cube` parsing and DoS limits, the complete GPU pipeline, RAW extension/signature detection, embedded JPEG extraction, Orientation 8, Auto Enhance, mask composition and brush pixels, PNG16 orientation/compression, EXIF rewrite and three-container injection, undo history, project serialization, presets, LUT baking, i18n key alignment, update URL allowlisting and texture pooling. Current result: 232 passed, 0 failed.
 
-**中文：** 冒烟测试在隐藏 Electron 窗口 + SwiftShader 下离屏运行，覆盖 `.cube` 解析与防 DoS、完整 GPU 管线、RAW 扩展名/签名识别、内嵌 JPEG 提取、Orientation 8 转正、自动优化、蒙版并集/交集/差集与画笔逐像素、PNG16 方向与压缩、EXIF 重写与三容器注入、撤销栈、工程序列化、调色预设、LUT 烘焙往返、中英文词典对齐、更新 URL 白名单与纹理池复用等。当前结果：191 通过，0 失败。
+**中文：** 冒烟测试在隐藏 Electron 窗口 + SwiftShader 下离屏运行，覆盖 `.cube` 解析与防 DoS、完整 GPU 管线、RAW 扩展名/签名识别、内嵌 JPEG 提取、Orientation 8 转正、自动优化、蒙版并集/交集/差集与画笔逐像素、PNG16 方向与压缩、EXIF 重写与三容器注入、撤销栈、工程序列化、调色预设、LUT 烘焙往返、中英文词典对齐、更新 URL 白名单与纹理池复用等。当前结果：232 通过，0 失败。
 
 > **EN:** Offscreen WebGL2 requires `--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader`; the smoke runner already includes them.
 > **中文：** 离屏 WebGL2 需要 `--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader`；`smoke-main.cjs` 已内置这些参数。

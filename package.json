@@ -1,9 +1,9 @@
 {
   "name": "lumedit",
   "version": "0.5.0",
-  "build": 7,
+  "build": 10,
   "private": true,
-  "description": "LumEdit 光影轻修 - 纯本地单张精修桌面工具（裁剪/调色/LUT/保真导出）",
+  "description": "LumEdit 光影轻修 - 纯本地单张精修桌面工具（裁剪/调色/LUT/叠加/保真导出）",
   "author": "LumEdit",
   "main": "dist-electron/main.cjs",
   "type": "module",

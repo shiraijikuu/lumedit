@@ -1,4 +1,6 @@
-import type { RenderStage } from './RenderStage';
+// 渲染管线装配：预览（EditorCanvas）与导出（exportWorker）共用同一套 Stage 与顺序，
+// 保证「所见即所得」。调色组内部顺序固定（有依赖关系）；多重叠加 blend 可置于 LUT 前/后；
+// camera-watermark 水印不在 GL 管线内，导出时在主线程作为最后一步离屏合成。
 import { GeometryStage } from './stages/GeometryStage';
 import { AdjustStage } from './stages/AdjustStage';
 import { CurveStage } from './stages/CurveStage';
@@ -10,9 +12,10 @@ import { GradationStage } from './stages/GradationStage';
 import { EffectsStage } from './stages/EffectsStage';
 import { LutStage } from './stages/LutStage';
 import { ToneRollStage } from './stages/ToneRollStage';
+import { BlendStage } from './stages/BlendStage';
+import type { RenderStage } from './RenderStage';
 
 export interface EditStageBundle {
-  ordered: RenderStage[];
   geometry: GeometryStage;
   adjust: AdjustStage;
   curve: CurveStage;
@@ -23,16 +26,15 @@ export interface EditStageBundle {
   gradation: GradationStage;
   effects: EffectsStage;
   lut: LutStage;
+  blend: BlendStage;
   tonemap: ToneRollStage;
+  /** 默认顺序（blend 在 LUT 之后） */
+  readonly ordered: RenderStage[];
+  /** 按叠加层相对 LUT 的位置组装管线 */
+  orderedFor(position: 'before-lut' | 'after-lut'): RenderStage[];
   dispose(): void;
 }
 
-/**
- * 构建编辑管线（预览 ImageRenderer 与导出 Worker 共用同一套，保证所见即所得）。
- * 固定顺序（不可调整）：
- * 几何 → 基础调色 → 曲线 → HSL → 颜色分级 → Log 色轮 → 取色限定器(二级) →
- * 局部蒙版(多) → 效果 → LUT → Soft Clip 输出滚降。
- */
 export function createEditStageBundle(): EditStageBundle {
   const geometry = new GeometryStage();
   const adjust = new AdjustStage();
@@ -44,8 +46,11 @@ export function createEditStageBundle(): EditStageBundle {
   const gradation = new GradationStage();
   const effects = new EffectsStage();
   const lut = new LutStage();
+  const blend = new BlendStage();
   const tonemap = new ToneRollStage();
-  const ordered: RenderStage[] = [
+
+  // 调色组（顺序固定，存在色彩依赖）
+  const colorStages: RenderStage[] = [
     geometry,
     adjust,
     curve,
@@ -55,11 +60,17 @@ export function createEditStageBundle(): EditStageBundle {
     qualifier,
     gradation,
     effects,
-    lut,
-    tonemap,
   ];
+
+  const compose = (position: 'before-lut' | 'after-lut'): RenderStage[] => [
+    ...colorStages,
+    ...(position === 'before-lut' ? [blend] : []),
+    lut,
+    tonemap,
+    ...(position === 'after-lut' ? [blend] : []),
+  ];
+
   return {
-    ordered,
     geometry,
     adjust,
     curve,
@@ -70,9 +81,25 @@ export function createEditStageBundle(): EditStageBundle {
     gradation,
     effects,
     lut,
+    blend,
     tonemap,
+    get ordered() {
+      return compose('after-lut');
+    },
+    orderedFor: compose,
     dispose() {
-      ordered.forEach((s) => s.destroy());
+      geometry.destroy();
+      adjust.destroy();
+      curve.destroy();
+      hsl.destroy();
+      colorGrade.destroy();
+      logWheels.destroy();
+      qualifier.destroy();
+      gradation.destroy();
+      effects.destroy();
+      lut.destroy();
+      blend.destroy();
+      tonemap.destroy();
     },
   };
 }

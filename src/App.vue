@@ -113,8 +113,12 @@ function onMenuAction(action: string): void {
 async function onDrop(e: DragEvent): Promise<void> {
   const file = e.dataTransfer?.files?.[0];
   if (!file) return;
+  // Electron 33：拖拽 File 不带 path，用 webUtils 取真实绝对路径，回退到文件名
+  const absPath = window.api?.getPathForFile?.(file) || file.name;
   const buffer = await file.arrayBuffer();
-  await store.loadImageObject(file.name, file.name, buffer);
+  // 用户主动拖入 = 手势授权该路径，保证最近打开 / 会话恢复 / 叠加层 / 导出能按路径重读
+  void window.api?.grantDragRead?.(absPath);
+  await store.loadImageObject(absPath, file.name, buffer);
 }
 
 let removeMenuListener: (() => void) | null = null;

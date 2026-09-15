@@ -37,7 +37,12 @@ function renderInWorker(req: Omit<ExportRequest, 'jobId'>): Promise<ExportRespon
   return new Promise((resolve) => {
     pending.set(jobId, resolve);
     const full: ExportRequest = { ...req, jobId };
-    w.postMessage(full, [full.buffer]);
+    // 主图与各叠加图层缓冲一并转移，避免结构化克隆拷贝
+    const transfer: Transferable[] = [full.buffer];
+    if (full.blendBuffers) {
+      for (const buf of Object.values(full.blendBuffers)) transfer.push(buf);
+    }
+    w.postMessage(full, transfer);
   });
 }
 
@@ -73,8 +78,22 @@ export async function runExport(
   opts?: ExportRunOptions
 ): Promise<ExportResponse> {
   const check = (): boolean => !!opts?.isCancelled?.();
-  // 1) Worker 渲染调色后无水印 PNG
-  const inter = await renderInWorker(req);
+  // 0) 多重叠加图层：主线程按路径读好图片字节，随任务交给 Worker 的 BlendStage（缺失层跳过）
+  const blendBuffers: Record<string, ArrayBuffer> = {};
+  const bp = req.params.blend;
+  if (bp?.enabled) {
+    for (const layer of bp.layers) {
+      if (layer.visible && layer.imagePath && !blendBuffers[layer.id]) {
+        try {
+          blendBuffers[layer.id] = await window.api.readBuffer(layer.imagePath);
+        } catch {
+          /* 图层文件缺失/不可读：跳过，与预览端行为一致 */
+        }
+      }
+    }
+  }
+  // 1) Worker 渲染调色 + 多重叠加后的无水印 PNG
+  const inter = await renderInWorker({ ...req, blendBuffers });
   if (check()) return cancelledResponse();
   if (!inter.ok || !inter.bytes || !inter.width || !inter.height) {
     return { jobId: -1, ok: false, error: inter.error || '中间位图渲染失败' };

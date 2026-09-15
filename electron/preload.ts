@@ -1,9 +1,13 @@
 // 安全 IPC 桥：contextIsolation 下只暴露白名单方法
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 const api = {
   // 文件
   openImages: (multi: boolean) => ipcRenderer.invoke('dialog:openImages', multi),
+  // Electron 33 拖拽 File 不再带 path，必须经 webUtils 取真实绝对路径（拖入 RAW/图片用于最近打开、会话恢复与路径引用）
+  getPathForFile: (file: File) => webUtils.getPathForFile(file),
+  // 用户主动拖入文件的读授权
+  grantDragRead: (p: string) => ipcRenderer.invoke('file:grantFromDrag', p),
   openCube: () => ipcRenderer.invoke('dialog:openCube'),
   // 用户自建 LUT 库（命名 / 分类 / 持久化）
   lutLib: {

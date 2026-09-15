@@ -137,6 +137,113 @@ export interface WatermarkParams {
   cwmMeta: Record<string, unknown> | null;
 }
 
+// ---------------- 多重图片叠加（混合图层，进 WebGL 管线，参数化/可撤销/进工程） ----------------
+/** W3C Compositing 混合模式（与 Canvas2D globalCompositeOperation 同公式），normal 为普通 Alpha 合成 */
+export type BlendMode =
+  | 'normal'
+  | 'multiply'
+  | 'screen'
+  | 'overlay'
+  | 'soft-light'
+  | 'hard-light'
+  | 'difference'
+  | 'exclusion'
+  | 'color-dodge'
+  | 'color-burn';
+
+/** 混合模式固定顺序（BlendStage 以该索引选择 shader 分支，勿随意调序） */
+export const BLEND_MODES: BlendMode[] = [
+  'normal',
+  'multiply',
+  'screen',
+  'overlay',
+  'soft-light',
+  'hard-light',
+  'difference',
+  'exclusion',
+  'color-dodge',
+  'color-burn',
+];
+
+/** 混合图层数量上限（多 pass / UI 列表共同约束） */
+export const MAX_BLEND_LAYERS = 8;
+
+export interface BlendLayer {
+  id: string;
+  /** 图层显示名（默认取文件名） */
+  name: string;
+  /** 外部图片绝对路径（文件引用，不嵌入工程；加载失败/缺失则跳过该层） */
+  imagePath: string | null;
+  mode: BlendMode;
+  /** 不透明度 0~1 */
+  opacity: number;
+  /** 中心位置，归一化 0~1（相对画面左上） */
+  x: number;
+  y: number;
+  /** 缩放，1=图层等比 contain 铺满画面 */
+  scale: number;
+  /** 旋转角度（度，顺时针） */
+  rotation: number;
+  flipH: boolean;
+  flipV: boolean;
+  visible: boolean;
+}
+
+export interface BlendParams {
+  enabled: boolean;
+  layers: BlendLayer[];
+  /** 合成组相对 LUT 的位置：before-lut=叠加层参与后续 LUT 调色；after-lut=LUT 之后再叠加 */
+  position: 'before-lut' | 'after-lut';
+}
+
+export function defaultBlendParams(): BlendParams {
+  return { enabled: false, layers: [], position: 'after-lut' };
+}
+
+let blendSeq = 0;
+/** 新建一个叠加图层（默认居中、全尺寸、normal、全不透明） */
+export function createBlendLayer(imagePath: string | null, name: string): BlendLayer {
+  blendSeq += 1;
+  return {
+    id: `b_${Date.now().toString(36)}_${blendSeq}`,
+    name,
+    imagePath,
+    mode: 'normal',
+    opacity: 1,
+    x: 0.5,
+    y: 0.5,
+    scale: 1,
+    rotation: 0,
+    flipH: false,
+    flipV: false,
+    visible: true,
+  };
+}
+
+function clampB(v: unknown, lo: number, hi: number, fb: number): number {
+  const n = typeof v === 'number' && Number.isFinite(v) ? v : fb;
+  return Math.min(hi, Math.max(lo, n));
+}
+
+/** 把任意（旧工程/损坏快照）图层数据补全为合法 BlendLayer */
+export function normalizeBlendLayer(l: Partial<BlendLayer> | null | undefined, idx = 0): BlendLayer {
+  const mode = BLEND_MODES.includes(l?.mode as BlendMode) ? (l!.mode as BlendMode) : 'normal';
+  return {
+    id: typeof l?.id === 'string' && l.id ? l.id : `b${idx + 1}`,
+    name: typeof l?.name === 'string' && l.name ? l.name : `Layer ${idx + 1}`,
+    imagePath: typeof l?.imagePath === 'string' ? l.imagePath : null,
+    mode,
+    opacity: clampB(l?.opacity, 0, 1, 1),
+    x: clampB(l?.x, -0.5, 1.5, 0.5),
+    y: clampB(l?.y, -0.5, 1.5, 0.5),
+    scale: clampB(l?.scale, 0.02, 20, 1),
+    rotation: clampB(l?.rotation, -180, 180, 0),
+    flipH: !!l?.flipH,
+    flipV: !!l?.flipV,
+    visible: l?.visible !== false,
+  };
+}
+
 export type GradationType = 'linear' | 'radial' | 'brush' | 'luminance' | 'color';
 
 export interface GradationParams {
@@ -232,6 +339,8 @@ export interface EditParams {
   /** v0.4.0：Soft Clip 高光/阴影滚降 */
   tonemap: ToneRollParams;
   lut: LutParams;
+  /** v0.5.0：多重图片叠加（混合图层，进 GL 管线） */
+  blend?: BlendParams;
   /** P1：camera-watermark 水印（管线最后一步，导出阶段离屏合成） */
   watermark?: WatermarkParams;
 }
@@ -337,6 +446,7 @@ export const defaultEditParams: EditParams = {
     isBuiltin: false,
     strength: 0,
   },
+  blend: defaultBlendParams(),
 };
 
 /** 多局部蒙版数量上限（shader 多 pass / UI 列表共同约束） */
@@ -474,6 +584,15 @@ export function ensureParams(p: Partial<EditParams> | null | undefined): EditPar
   }
   if (p.qualifier) Object.assign(out.qualifier, p.qualifier);
   if (p.tonemap) Object.assign(out.tonemap, p.tonemap);
+  if (p.blend) {
+    out.blend = {
+      enabled: !!p.blend.enabled,
+      position: p.blend.position === 'before-lut' ? 'before-lut' : 'after-lut',
+      layers: Array.isArray(p.blend.layers)
+        ? p.blend.layers.slice(0, MAX_BLEND_LAYERS).map((l, i) => normalizeBlendLayer(l, i))
+        : [],
+    };
+  }
   if (p.watermark) out.watermark = p.watermark;
   return out;
 }
@@ -512,6 +631,13 @@ export function cloneParams(p: EditParams): EditParams {
     tonemap: { ...defaultEditParams.tonemap, ...(p.tonemap ?? {}) },
     lut: { ...p.lut },
   };
+  if (p.blend) {
+    cloned.blend = {
+      enabled: p.blend.enabled,
+      position: p.blend.position,
+      layers: p.blend.layers.map((l) => ({ ...l })),
+    };
+  }
   if (p.watermark) {
     cloned.watermark = {
       enabled: p.watermark.enabled,

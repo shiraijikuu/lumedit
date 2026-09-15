@@ -47,7 +47,7 @@ async function writeUserLutLib(lib: UserLutRecord[]): Promise<void> {
 }
 
 // 单调递增构建号：同版本内容修订时 +1（渲染层远程比对用）
-const APP_BUILD = 7;
+const APP_BUILD = 10;
 // 远程更新清单（jsdelivr 镜像 GitHub，防缓存参数由调用方追加）
 const REMOTE_UPDATE_URL =
   'https://cdn.jsdelivr.net/gh/shiraijikuu/lumedit@main/update.json';
@@ -280,6 +280,12 @@ function registerIpc(): void {
         buffer: (await fs.readFile(p)).buffer.slice(0),
       }))
     );
+  });
+
+  // 用户主动把文件拖进窗口 = 明确手势，等价于在对话框选中：授权该路径供后续按路径重读（会话恢复 / 叠加层 / 导出）
+  ipcMain.handle('file:grantFromDrag', (_e, p: string) => {
+    if (typeof p === 'string' && p) fileAccess.grantRead(p);
+    return true;
   });
 
   ipcMain.handle('dialog:openCube', async () => {

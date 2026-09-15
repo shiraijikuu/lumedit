@@ -16,6 +16,7 @@
       <GeometryPanel v-show="tab === 'geometry'" />
       <AdjustPanel v-show="tab === 'adjust'" />
       <LutPanel v-show="tab === 'lut'" />
+      <BlendPanel v-show="tab === 'blend'" />
       <WatermarkPanel v-show="tab === 'watermark'" />
       <ExportPanel v-show="tab === 'export'" />
       <BatchPanel v-show="tab === 'batch'" />
@@ -44,6 +45,7 @@ import { ref } from 'vue';
 import GeometryPanel from './panels/GeometryPanel.vue';
 import AdjustPanel from './panels/AdjustPanel.vue';
 import LutPanel from './panels/LutPanel.vue';
+import BlendPanel from './panels/BlendPanel.vue';
 import WatermarkPanel from './panels/WatermarkPanel.vue';
 import ExportPanel from './panels/ExportPanel.vue';
 import BatchPanel from './panels/BatchPanel.vue';
@@ -53,6 +55,7 @@ const tabs = [
   { v: 'geometry', labelKey: 'tabs.geometry' },
   { v: 'adjust', labelKey: 'tabs.adjust' },
   { v: 'lut', labelKey: 'tabs.lut' },
+  { v: 'blend', labelKey: 'tabs.blend' },
   { v: 'watermark', labelKey: 'tabs.watermark' },
   { v: 'export', labelKey: 'tabs.exportTab' },
   { v: 'batch', labelKey: 'tabs.batch' },
@@ -90,7 +93,7 @@ function openLink(url: string): void {
 }
 .tabs {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(7, 1fr);
 }
 .tabs button {
   font-size: 11.5px;

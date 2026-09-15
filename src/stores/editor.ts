@@ -10,6 +10,10 @@ import {
   createGradation,
   MAX_GRADATIONS,
   type GradationType,
+  createBlendLayer,
+  MAX_BLEND_LAYERS,
+  type BlendLayer,
+  type BlendMode,
   type PresetColorParams,
 } from '@/types/EditParams';
 import {
@@ -144,6 +148,15 @@ export const useEditorStore = defineStore('editor', () => {
     params.qualifier = src.qualifier;
     params.tonemap = src.tonemap;
     params.lut = src.lut;
+    if (src.blend) {
+      params.blend = {
+        enabled: src.blend.enabled,
+        position: src.blend.position,
+        layers: src.blend.layers.map((l) => ({ ...l })),
+      };
+    } else {
+      delete params.blend;
+    }
     if (src.watermark) {
       params.watermark = {
         enabled: src.watermark.enabled,
@@ -555,6 +568,131 @@ export const useEditorStore = defineStore('editor', () => {
     }, scrub);
   }
 
+  // ---------- 多重图片叠加（v0.5.0） ----------
+  const selectedBlendId = ref<string | null>(null);
+  const selectedBlendLayer = computed<BlendLayer | null>(
+    () => params.blend?.layers.find((l) => l.id === selectedBlendId.value) ?? null
+  );
+
+  /** 保证 blend 组存在（在一次 mutate 内调用） */
+  function ensureBlendGroup(p: EditParams): void {
+    if (!p.blend) p.blend = { enabled: true, layers: [], position: 'after-lut' };
+  }
+
+  /** 从文件选择器添加叠加图层 */
+  async function addBlendLayerFromPicker(): Promise<void> {
+    if (!hasImage.value) return;
+    if ((params.blend?.layers.length ?? 0) >= MAX_BLEND_LAYERS) {
+      toast('info', t('blend.maxReached'));
+      return;
+    }
+    const results = await window.api.openImages(false);
+    if (!results || results.length === 0) return;
+    const r = results[0];
+    const layer = createBlendLayer(r.path, r.name.replace(/\.[^.]+$/, ''));
+    mutate((p) => {
+      ensureBlendGroup(p);
+      p.blend!.enabled = true;
+      p.blend!.layers.push(layer);
+    });
+    selectedBlendId.value = layer.id;
+  }
+
+  /** 用已有路径添加（工程恢复/内部） */
+  function addBlendLayer(path: string, name: string): string {
+    const layer = createBlendLayer(path, name);
+    mutate((p) => {
+      ensureBlendGroup(p);
+      p.blend!.layers.push(layer);
+    });
+    selectedBlendId.value = layer.id;
+    return layer.id;
+  }
+
+  function selectBlendLayer(id: string | null): void {
+    selectedBlendId.value = id;
+  }
+
+  function mutateBlendLayer(
+    id: string,
+    fn: (l: BlendLayer) => void,
+    scrub = false
+  ): void {
+    mutate((p) => {
+      const l = p.blend?.layers.find((x) => x.id === id);
+      if (l) fn(l);
+    }, scrub);
+  }
+
+  function removeBlendLayer(id: string): void {
+    mutate((p) => {
+      if (!p.blend) return;
+      p.blend.layers = p.blend.layers.filter((l) => l.id !== id);
+    });
+    if (selectedBlendId.value === id) selectedBlendId.value = null;
+  }
+
+  function duplicateBlendLayer(id: string): void {
+    if ((params.blend?.layers.length ?? 0) >= MAX_BLEND_LAYERS) {
+      toast('info', t('blend.maxReached'));
+      return;
+    }
+    const src = params.blend?.layers.find((l) => l.id === id);
+    if (!src) return;
+    const copy = createBlendLayer(src.imagePath, `${src.name} ${t('common.copy')}`);
+    Object.assign(copy, {
+      mode: src.mode, opacity: src.opacity, x: src.x, y: src.y,
+      scale: src.scale, rotation: src.rotation, flipH: src.flipH, flipV: src.flipV,
+      visible: src.visible,
+    });
+    mutate((p) => {
+      if (!p.blend) return;
+      const idx = p.blend.layers.findIndex((l) => l.id === id);
+      p.blend.layers.splice(idx + 1, 0, copy);
+    });
+    selectedBlendId.value = copy.id;
+  }
+
+  /** dir=-1 上移（更靠底）/ +1 下移（更靠顶）；数组末尾=最上层=最后合成 */
+  function moveBlendLayer(id: string, dir: -1 | 1): void {
+    mutate((p) => {
+      if (!p.blend) return;
+      const arr = p.blend.layers;
+      const idx = arr.findIndex((l) => l.id === id);
+      const target = idx + dir;
+      if (idx < 0 || target < 0 || target >= arr.length) return;
+      const [item] = arr.splice(idx, 1);
+      arr.splice(target, 0, item);
+    });
+  }
+
+  function toggleBlendLayerVisible(id: string): void {
+    mutate((p) => {
+      const l = p.blend?.layers.find((x) => x.id === id);
+      if (l) l.visible = !l.visible;
+    });
+  }
+
+  function setBlendEnabled(on: boolean): void {
+    mutate((p) => {
+      ensureBlendGroup(p);
+      p.blend!.enabled = on;
+    });
+  }
+
+  function setBlendPosition(position: 'before-lut' | 'after-lut'): void {
+    mutate((p) => {
+      ensureBlendGroup(p);
+      p.blend!.position = position;
+    });
+  }
+
+  function setBlendMode(id: string, mode: BlendMode): void {
+    mutateBlendLayer(id, (l) => {
+      l.mode = mode;
+    });
+  }
+
   // ---------- HSL 取色限定器吸管（v0.4.0） ----------
   const qualifierPicker = ref(false);
   function toggleQualifierPicker(): void {
@@ -610,8 +748,15 @@ export const useEditorStore = defineStore('editor', () => {
   /** 防抖重建水印预览（调色/几何/LUT/撤销后调用，仅在启用水印时开离屏合成窗） */
   function scheduleWmPreview(): void {
     const wm = params.watermark;
+    // 水印未启用 / 无水印内容：立即清空整图预览，绝不让旧整图残留遮挡实时 GL 画面
+    if (!wm?.enabled || !wm.cwmState) {
+      if (wmPreviewTimer) { clearTimeout(wmPreviewTimer); wmPreviewTimer = null; }
+      wmPreviewUrl.value = null;
+      wmPreviewStale.value = false;
+      return;
+    }
     // 已有可用水印整图时，先标记为过期、露出底层实时画面，保证调色/LUT 即时反馈
-    if (wm?.enabled && wm.cwmState && wmPreviewUrl.value) wmPreviewStale.value = true;
+    if (wmPreviewUrl.value) wmPreviewStale.value = true;
     if (wmPreviewTimer) clearTimeout(wmPreviewTimer);
     wmPreviewTimer = setTimeout(() => {
       void refreshWmPreview();
@@ -697,6 +842,8 @@ export const useEditorStore = defineStore('editor', () => {
   async function refreshWmPreview(): Promise<void> {
     const wm = params.watermark;
     if (!wm?.enabled || !wm.cwmState) {
+      // 等待重建期间水印被关闭/移除：清空残留整图，避免遮挡实时 GL 画面
+      wmPreviewUrl.value = null;
       wmPreviewStale.value = false;
       return;
     }
@@ -1020,23 +1167,10 @@ export const useEditorStore = defineStore('editor', () => {
           return;
         }
       }
-      // 恢复参数（ensureParams 兼容旧工程缺失的调色分组）
+      // 恢复全部参数组（曲线 / HSL / 分级 / 蒙版 / Qualifier / Tonemap / Blend / 水印）
       const p = cloneParams(ensureParams(proj.params));
-      params.geometry = p.geometry;
-      params.adjust = p.adjust;
-      params.curve = p.curve;
-      params.hsl = p.hsl;
-      params.colorGrade = p.colorGrade;
-      params.logWheels = p.logWheels;
-      params.effects = p.effects;
-      params.lut = p.lut;
-      if (p.watermark) {
-        params.watermark = {
-          enabled: p.watermark.enabled,
-          cwmState: p.watermark.cwmState ? JSON.parse(JSON.stringify(p.watermark.cwmState)) : null,
-          cwmMeta: p.watermark.cwmMeta ? JSON.parse(JSON.stringify(p.watermark.cwmMeta)) : null,
-        };
-      } else delete params.watermark;
+      restoreParams(p);
+      selectedBlendId.value = null;
       history.past = [];
       history.future = [];
       refreshHistoryFlags();
@@ -1145,6 +1279,8 @@ export const useEditorStore = defineStore('editor', () => {
     params.qualifier = d.qualifier;
     params.tonemap = d.tonemap;
     params.lut = d.lut;
+    params.blend = d.blend;
+    selectedBlendId.value = null;
     wmSeq++;
     delete params.watermark;
     wmPreviewUrl.value = null;
@@ -1172,14 +1308,8 @@ export const useEditorStore = defineStore('editor', () => {
     await loadImageObject(target.path, target.name, target.buffer.slice(0));
     if (savedParams) {
       const p = ensureParams(savedParams as Partial<EditParams>);
-      params.geometry = p.geometry;
-      params.adjust = p.adjust;
-      params.curve = p.curve;
-      params.hsl = p.hsl;
-      params.colorGrade = p.colorGrade;
-      params.logWheels = p.logWheels;
-      params.effects = p.effects;
-      params.lut = p.lut;
+      restoreParams(p);
+      selectedBlendId.value = null;
       await syncLutFromParams();
       scheduleWmPreview();
     }
@@ -1231,6 +1361,10 @@ export const useEditorStore = defineStore('editor', () => {
     autoEnhancing, autoEnhanceApplied, applyAutoEnhance, resetAutoEnhance,
     // 多局部蒙版
     selectedGradId, addGradation, removeGradation, duplicateGradation, selectGradation, mutateGrad,
+    // 多重图片叠加
+    selectedBlendId, selectedBlendLayer, addBlendLayerFromPicker, addBlendLayer, selectBlendLayer,
+    mutateBlendLayer, removeBlendLayer, duplicateBlendLayer, moveBlendLayer, toggleBlendLayerVisible,
+    setBlendEnabled, setBlendPosition, setBlendMode,
     // picker / split / clip / mode / zoom / export / project
     pickerActive, togglePicker, cancelPicker, applyWhiteBalance,
     qualifierPicker, toggleQualifierPicker, applyQualifierHue,

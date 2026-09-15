@@ -1,15 +1,15 @@
 {
   "version": "0.5.0",
-  "build": 7,
+  "build": 10,
   "coreVersion": "0.5.0",
   "shellVersion": "0.5.0",
-  "releaseDate": "2026-09-14",
+  "releaseDate": "2026-09-15",
   "downloads": {
     "windows": "https://github.com/shiraijikuu/lumedit/releases/download/v0.5.0/LumEdit-0.5.0-setup.exe"
   },
   "download_url": "https://github.com/shiraijikuu/lumedit/releases/download/v0.5.0/LumEdit-0.5.0-setup.exe",
   "notes": {
-    "zh": "LumEdit v0.5.0：新增 Log 色轮与本地一键自动优化；完善蒙版交互并修复导出、PNG16 方向、预设图片水印和复制速度。",
-    "en": "LumEdit v0.5.0 adds Log Wheels and local auto enhance, improves masks, and fixes export, PNG16 orientation, image-watermark presets and copy speed."
+    "zh": "LumEdit v0.5.0 build 10：新增最多 8 层多重图片叠加与 10 种混合模式，支持 LUT 前后合成、RAW/JPG/PNG/WebP 图层和工程保存恢复；同时修复工程恢复、透明底图合成、导出容错与上下文恢复问题。",
+    "en": "LumEdit v0.5.0 build 10 adds up to 8 image blend layers with 10 blend modes, LUT-relative compositing, RAW/JPG/PNG/WebP layer support and project persistence, plus project restore, transparent-base compositing, export resilience and context-recovery fixes."
   }
 }

@@ -62,6 +62,10 @@ export interface UpdaterEvent {
 // preload 暴露的安全 IPC 桥（contextBridge）
 export interface LumeditAPI {
   openImages: (multi: boolean) => Promise<OpenImageResult[] | null>;
+  /** 拖拽 File → 真实绝对路径（Electron 33 webUtils） */
+  getPathForFile: (file: File) => string;
+  /** 用户主动拖入文件的读授权 */
+  grantDragRead: (path: string) => Promise<boolean>;
   openCube: () => Promise<{ path: string; name: string; text: string } | null>;
   lutLib: {
     list: () => Promise<UserLutRecord[]>;

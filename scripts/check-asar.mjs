@@ -7,9 +7,16 @@ import { fileURLToPath } from 'node:url';
 import asar from '@electron/asar';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const candidates = [
+  process.env.LUMEDIT_DIST_OUT
+    ? resolve(process.env.LUMEDIT_DIST_OUT, 'win-unpacked/resources/app.asar')
+    : null,
+  'E:/lumedit-dist/win-unpacked/resources/app.asar',
+  resolve(root, 'release/win-unpacked/resources/app.asar'),
+].filter(Boolean);
 const target = process.argv[2]
   ? resolve(process.argv[2])
-  : resolve(root, 'release/win-unpacked/resources/app.asar');
+  : candidates.find((candidate) => existsSync(candidate)) ?? candidates[candidates.length - 1];
 
 if (!existsSync(target)) {
   console.error('[check-asar] 找不到 asar：' + target);
